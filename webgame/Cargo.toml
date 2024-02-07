@@ -1,5 +1,5 @@
 [package]
-name = "yourproject-game"
+name = "webgame-game"
 version = "0.1.0"
 edition = "2021"
 

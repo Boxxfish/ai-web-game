@@ -7,7 +7,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: snok/install-poetry@v1
     - run: |
-        cd yourproject-ml
+        cd webgame-ml
         poetry install
         poetry run mypy .
     - uses: psf/black@stable
