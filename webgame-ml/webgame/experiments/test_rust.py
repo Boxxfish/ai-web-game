@@ -9,6 +9,7 @@ import gymnasium
 import torch
 import torch.nn as nn
 import wandb
+from safetensors.torch import save_model
 from gymnasium.spaces import Box, Discrete
 from gymnasium.vector import SyncVectorEnv
 from torch.distributions import Categorical
@@ -214,4 +215,4 @@ for _ in tqdm(range(iterations), position=0):
         }
     )
 
-    
+    save_model(p_net, "temp/p_net.safetensors")

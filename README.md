@@ -55,7 +55,9 @@ entity = "YOUR_WANDB_NAME"
 Now, run an experiment:
 
 ```bash
+mkdir temp
 python webgame/experiments/test_rust.py
 ```
 
-If you open your WandB dashboard, you should see a bunch of metrics pop up now.
+If you open your WandB dashboard, you should see a bunch of metrics pop up now. You should also see a file called
+`p_net.safetensors` in your `temp` directory. This file contains the weights of our neural network.

@@ -2,7 +2,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
 webgame/conf.py
-
+/temp
 
 # WandB files
 wandb/
