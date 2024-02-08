@@ -42,6 +42,7 @@ impl Plugin for CartpolePlayPlugin {
                     update_visuals,
                     update_action_nn,
                     load_weights_into_net::<CartpoleNet>,
+                    reset_on_fail_or_success,
                 ),
             );
     }
@@ -100,8 +101,8 @@ pub struct CartpoleState {
 impl CartpoleState {
     /// Returns a randomized initial state.
     pub fn random() -> Self {
-        let low = -0.05;
-        let high = 0.05;
+        let low = -0.8;
+        let high = 0.8;
         let mut rng = rand::thread_rng();
         Self {
             cart_pos: rng.gen_range(low..high),
@@ -143,6 +144,15 @@ fn run_sim(mut cart_state: ResMut<CartpoleState>, next_act: Res<NextAction>, tim
         pole_angle: theta,
         pole_angvel: theta_dot,
     };
+}
+
+/// Resets the environment if the cart strays too far, or if it successfully balances the pole.
+fn reset_on_fail_or_success(mut cart_state: ResMut<CartpoleState>) {
+    if cart_state.cart_pos.abs() > 4.
+        || (cart_state.pole_angvel.abs() < 0.01 && cart_state.pole_angle.abs() < 0.01)
+    {
+        *cart_state = CartpoleState::random();
+    }
 }
 
 /// Updates the visuals in the simulation.
