@@ -35,7 +35,7 @@ jobs:
         cp index.html ./build/
     - uses: KikimoraGames/itch-publish@v0.0.3
       with:
-        gameData: ./build
+        gameData: ./webgame-game/build
         butlerApiKey: ${{secrets.BUTLER_API_KEY}}
         itchUsername: ${{env.ITCH_USERNAME}}
         itchGameId: ${{env.ITCH_GAME_ID}}
