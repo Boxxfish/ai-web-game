@@ -60,4 +60,5 @@ python webgame/experiments/test_rust.py
 ```
 
 If you open your WandB dashboard, you should see a bunch of metrics pop up now. You should also see a file called
-`p_net.safetensors` in your `temp` directory. This file contains the weights of our neural network.
+`p_net.safetensors` in your `temp` directory. This file contains the weights of our neural network. To update the game's
+current checkpoint, move this file to the `assets` folder under `webgame-game`.
