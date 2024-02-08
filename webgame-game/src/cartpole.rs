@@ -1,5 +1,12 @@
-use bevy::prelude::*;
+use bevy::{
+    asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext},
+    prelude::*,
+    utils::BoxedFuture,
+};
+use candle_core::{Module, Tensor};
+use candle_nn as nn;
 use rand::prelude::*;
+use serde::Deserialize;
 
 pub const GRAVITY: f32 = 9.8;
 pub const MASS_CART: f32 = 1.0;
@@ -16,8 +23,10 @@ pub struct CartpolePlugin;
 impl Plugin for CartpolePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(CartpoleState::random())
-        .insert_resource(NextAction(2))
-            .add_systems(Update, run_sim);
+            .insert_resource(NextAction(2))
+            .add_systems(Update, run_sim)
+            .init_asset::<SafeTensorsData>()
+            .init_asset_loader::<SafeTensorsDataLoader>();
     }
 }
 
@@ -26,8 +35,15 @@ pub struct CartpolePlayPlugin;
 
 impl Plugin for CartpolePlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_graphics)
-            .add_systems(Update, (update_visuals, update_action));
+        app.add_systems(Startup, (setup_graphics, init_nn))
+            .add_systems(
+                Update,
+                (
+                    update_visuals,
+                    update_action_nn,
+                    load_weights_into_net::<CartpoleNet>,
+                ),
+            );
     }
 }
 /// A cart that will move left and right.
@@ -96,7 +112,6 @@ impl CartpoleState {
     }
 }
 
-
 /// Runs the simluation.
 fn run_sim(mut cart_state: ResMut<CartpoleState>, next_act: Res<NextAction>, time: Res<Time>) {
     let x = cart_state.cart_pos;
@@ -148,14 +163,160 @@ fn update_visuals(
 pub struct NextAction(pub u32);
 
 /// Updates the next action by pressing left or right.
-fn update_action(mut next_act: ResMut<NextAction>, inpt: Res<Input<KeyCode>>) {
+/// Add this to allow player control.
+fn _update_action(mut next_act: ResMut<NextAction>, inpt: Res<Input<KeyCode>>) {
     next_act.0 = if inpt.pressed(KeyCode::Left) {
         0
-    }
-    else if inpt.pressed(KeyCode::Right) {
+    } else if inpt.pressed(KeyCode::Right) {
         1
-    }
-    else {
+    } else {
         2
     };
+}
+
+/// Updates the next action with the neural network.
+/// Add this to allow neural network control.
+fn update_action_nn(
+    cart_state: Res<CartpoleState>,
+    mut next_act: ResMut<NextAction>,
+    neural_net: Query<&NNWrapper<CartpoleNet>>,
+) {
+    if let Ok(neural_net) = neural_net.get_single() {
+        if let Some(net) = &neural_net.net {
+            let state = Tensor::from_slice(
+                &[
+                    cart_state.cart_pos,
+                    cart_state.cart_vel,
+                    cart_state.pole_angle,
+                    cart_state.pole_angvel,
+                ],
+                &[1, 4],
+                &candle_core::Device::Cpu,
+            )
+            .unwrap();
+            next_act.0 = net
+                .forward(&state)
+                .unwrap()
+                .squeeze(0)
+                .unwrap()
+                .argmax(0)
+                .unwrap()
+                .to_scalar()
+                .unwrap();
+        }
+    }
+}
+
+/// Initializes the network.
+fn init_nn(asset_server: Res<AssetServer>, mut commands: Commands) {
+    commands.spawn(NNWrapper::<CartpoleNet>::with_sftensors(
+        asset_server.load("p_net.safetensors"),
+    ));
+}
+
+/// A component that wraps a neural network.
+///
+/// Handles loading the safetensors file and initializing the model when ready.
+#[derive(Component)]
+pub struct NNWrapper<T: LoadableNN> {
+    pub weights: Handle<SafeTensorsData>,
+    pub net: Option<T>,
+}
+
+impl<T: LoadableNN> NNWrapper<T> {
+    /// Creates a NNWrapper by passing in a handle to the weights.
+    pub fn with_sftensors(sftensors: Handle<SafeTensorsData>) -> Self {
+        Self {
+            weights: sftensors,
+            net: None,
+        }
+    }
+}
+
+/// Allows easily loading weights into the net.
+pub trait LoadableNN: std::marker::Send + std::marker::Sync + 'static {
+    fn load(vm: nn::VarBuilder) -> candle_core::Result<Self>
+    where
+        Self: std::marker::Sized;
+}
+
+/// The neural network that plays our game.
+struct CartpoleNet {
+    a_layer1: nn::Linear,
+    a_layer2: nn::Linear,
+    a_layer3: nn::Linear,
+}
+
+impl LoadableNN for CartpoleNet {
+    fn load(vm: nn::VarBuilder) -> candle_core::Result<Self> {
+        let a_layer1 = nn::linear(4, 64, vm.pp("a_layer1"))?;
+        let a_layer2 = nn::linear(64, 64, vm.pp("a_layer2"))?;
+        let a_layer3 = nn::linear(64, 2, vm.pp("a_layer3"))?;
+        Ok(Self {
+            a_layer1,
+            a_layer2,
+            a_layer3,
+        })
+    }
+}
+
+impl Module for CartpoleNet {
+    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
+        let xs = self.a_layer1.forward(xs)?.relu()?;
+        let xs = self.a_layer2.forward(&xs)?.relu()?;
+        let xs = self.a_layer3.forward(&xs)?;
+        Ok(xs)
+    }
+}
+
+#[derive(Asset, TypePath, Debug, Deserialize, Clone)]
+pub struct SafeTensorsData(pub Vec<u8>);
+
+#[derive(Default)]
+pub struct SafeTensorsDataLoader;
+
+#[derive(Debug, thiserror::Error)]
+pub enum SafeTensorsError {}
+
+impl AssetLoader for SafeTensorsDataLoader {
+    type Asset = SafeTensorsData;
+    type Settings = ();
+    type Error = SafeTensorsError;
+    fn load<'a>(
+        &'a self,
+        reader: &'a mut Reader,
+        _settings: &'a (),
+        _load_context: &'a mut LoadContext,
+    ) -> BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
+        Box::pin(async move {
+            let mut buf = Vec::new();
+            reader.read_to_end(&mut buf).await.unwrap();
+            let custom_asset = SafeTensorsData(buf);
+            Ok(custom_asset)
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["safetensors"]
+    }
+}
+
+/// Checks if safetensors are loaded and initializes the network if so.
+fn load_weights_into_net<T: LoadableNN>(
+    mut net_query: Query<&mut NNWrapper<T>>,
+    st_assets: Res<Assets<SafeTensorsData>>,
+) {
+    for mut net in net_query.iter_mut() {
+        if net.net.is_none() {
+            if let Some(st_data) = st_assets.get(&net.weights) {
+                let vb = nn::VarBuilder::from_buffered_safetensors(
+                    st_data.0.clone(),
+                    candle_core::DType::F32,
+                    &candle_core::Device::Cpu,
+                )
+                .unwrap();
+                net.net = Some(T::load(vb).expect("Couldn't load model."));
+            }
+        }
+    }
 }

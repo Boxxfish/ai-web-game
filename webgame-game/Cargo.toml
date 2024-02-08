@@ -16,4 +16,9 @@ opt-level = 3
 
 [dependencies]
 bevy = { version = "0.12.0", features = ["wayland"] }
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.4.0" }
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.4.0" }
 rand = "0.8.5"
+safetensors = "0.4.2"
+serde = { version = "1.0.0", features = ["derive"] }
+thiserror = "1.0.56"

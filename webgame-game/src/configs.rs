@@ -36,7 +36,7 @@ pub struct ReleaseCfgPlugin;
 
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((CoreGamePlugin, PlayablePlugin));
+        app.add_plugins((PlayablePlugin, CoreGamePlugin));
     }
 }
 
