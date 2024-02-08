@@ -11,7 +11,7 @@ env:
   ITCH_USERNAME: boxfish
   ITCH_GAME_ID: ai-web-game
   BUILD_CHANNEL: html
-  GAME_NAME: ai-web-game
+  GAME_NAME: webgame-game
 
 jobs:
   build:
