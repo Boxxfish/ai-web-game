@@ -9,16 +9,17 @@ import gymnasium
 import torch
 import torch.nn as nn
 import wandb
+from safetensors.torch import save_model
 from gymnasium.spaces import Box, Discrete
 from gymnasium.vector import SyncVectorEnv
 from torch.distributions import Categorical
 from tqdm import tqdm
 
-from yourproject.algorithms.ppo import train_ppo
-from yourproject.algorithms.rollout_buffer import RolloutBuffer
-from yourproject.conf import entity
-from yourproject.utils import init_orthogonal
-from yourproject_rust import CartpoleEnv  # type: ignore
+from webgame.algorithms.ppo import train_ppo
+from webgame.algorithms.rollout_buffer import RolloutBuffer
+from webgame.conf import entity
+from webgame.utils import init_orthogonal
+from webgame_rust import CartpoleEnv  # type: ignore
 
 _: Any
 
@@ -214,4 +215,4 @@ for _ in tqdm(range(iterations), position=0):
         }
     )
 
-    
+    save_model(p_net, "temp/p_net.safetensors")

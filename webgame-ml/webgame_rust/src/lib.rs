@@ -1,6 +1,6 @@
 use bevy::{log::LogPlugin, prelude::*};
 use pyo3::prelude::*;
-use yourproject_game::{
+use webgame_game::{
     cartpole::{CartpoleState, NextAction},
     configs::LibCfgPlugin,
 };
@@ -81,7 +81,7 @@ impl Default for CartpoleEnv {
 }
 
 #[pymodule]
-fn yourproject_rust(_py: Python, m: &PyModule) -> PyResult<()> {
+fn webgame_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<CartpoleEnv>()?;
     Ok(())
 }

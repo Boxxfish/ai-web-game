@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use bevy::{input::InputPlugin, prelude::*, scene::ScenePlugin, time::TimeUpdateStrategy};
+use bevy::{asset::AssetMetaCheck, input::InputPlugin, prelude::*, scene::ScenePlugin, time::TimeUpdateStrategy};
 
 use crate::cartpole::{CartpolePlayPlugin, CartpolePlugin};
 
@@ -20,14 +20,16 @@ pub struct PlayablePlugin;
 
 impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Your Project (Game)".into(),
+        app.insert_resource(AssetMetaCheck::Never)
+            .add_plugins(DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Your Project (Game)".into(),
+                    resolution: (640., 360.).into(),
+                    ..default()
+                }),
                 ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins(CartpolePlayPlugin);
+            }))
+            .add_plugins(CartpolePlayPlugin);
     }
 }
 
@@ -36,7 +38,7 @@ pub struct ReleaseCfgPlugin;
 
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((CoreGamePlugin, PlayablePlugin));
+        app.add_plugins((PlayablePlugin, CoreGamePlugin));
     }
 }
 

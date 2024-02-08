@@ -3695,6 +3695,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "webgame-game"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "rand",
+]
+
+[[package]]
+name = "webgame_rust"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "pyo3",
+ "rand",
+ "webgame-game",
+]
+
+[[package]]
 name = "wgpu"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4161,24 +4179,6 @@ name = "xml-rs"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fcb9cbac069e033553e8bb871be2fbdffcab578eb25bd0f7c508cedc6dcd75a"
-
-[[package]]
-name = "yourproject-game"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "rand",
-]
-
-[[package]]
-name = "yourproject_rust"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "pyo3",
- "rand",
- "yourproject-game",
-]
 
 [[package]]
 name = "zerocopy"
