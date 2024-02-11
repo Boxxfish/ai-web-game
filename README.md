@@ -1,6 +1,6 @@
-# AI Web Game (To Be Renamed)
+# Pursuer
 
-This repo contains both the game and training code for the game AI Web Game (To Be Renamed).
+This repo contains both the game and training code for the AI demo "Pursuer". The design document can be found in the `/docs` folder.
 
 The goal of this project is to design and build a (short) game incorporating deep learning, with the constraint that it
 has to be efficient enough to run in a browser.
