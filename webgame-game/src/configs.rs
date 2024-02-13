@@ -2,16 +2,21 @@
 
 use std::time::Duration;
 
-use bevy::{asset::AssetMetaCheck, input::InputPlugin, prelude::*, scene::ScenePlugin, time::TimeUpdateStrategy};
+use bevy::{
+    asset::AssetMetaCheck, input::InputPlugin, prelude::*, scene::ScenePlugin,
+    time::TimeUpdateStrategy,
+};
+use bevy_rapier2d::prelude::*;
 
-use crate::cartpole::{CartpolePlayPlugin, CartpolePlugin};
+use crate::{gridworld::{GridworldPlayPlugin, GridworldPlugin}, net::NetPlugin};
 
 /// Handles core functionality for our game (i.e. gameplay logic).
 pub struct CoreGamePlugin;
 
 impl Plugin for CoreGamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(CartpolePlugin);
+        app.add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
+            .add_plugins((NetPlugin, GridworldPlugin));
     }
 }
 
@@ -29,7 +34,8 @@ impl Plugin for PlayablePlugin {
                 }),
                 ..default()
             }))
-            .add_plugins(CartpolePlayPlugin);
+            .add_plugins(RapierDebugRenderPlugin::default())
+            .add_plugins(GridworldPlayPlugin);
     }
 }
 
@@ -45,6 +51,8 @@ impl Plugin for ReleaseCfgPlugin {
 /// The configuration for library builds (e.g. for machine learning).
 pub struct LibCfgPlugin;
 
+const FIXED_TS: f32 = 0.02;
+
 impl Plugin for LibCfgPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
@@ -56,8 +64,16 @@ impl Plugin for LibCfgPlugin {
             ScenePlugin,
             CoreGamePlugin,
         ))
+        // Use constant timestep
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
-            0.02,
-        ))); // Use constant timestep
+            FIXED_TS,
+        )))
+        .insert_resource(RapierConfiguration {
+            timestep_mode: TimestepMode::Fixed {
+                dt: FIXED_TS,
+                substeps: 10,
+            },
+            ..default()
+        });
     }
 }
