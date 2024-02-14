@@ -1,2 +1,3 @@
-pub mod cartpole;
+pub mod net;
 pub mod configs;
+pub mod gridworld;

@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use configs::ReleaseCfgPlugin;
 
-mod cartpole;
+mod net;
 mod configs;
+mod gridworld;
 
 /// Main entry point for our game.
 fn main() {
