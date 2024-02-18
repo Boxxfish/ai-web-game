@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use pyo3::prelude::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::LibCfgPlugin,
     gridworld::{Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent},
@@ -40,8 +41,8 @@ pub struct GameState {
 }
 
 /// Indicates the kind of actions an agent can take.
-#[pyclass]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
 pub enum AgentAction {
     NoAction = 0,
     MoveUp = 1,
@@ -52,6 +53,13 @@ pub enum AgentAction {
     MoveDownLeft = 6,
     MoveLeft = 7,
     MoveUpLeft = 8,
+}
+
+impl<'source> FromPyObject<'source> for AgentAction {
+    fn extract(ob: &'source PyAny) -> PyResult<Self> {
+        let index: u8 = ob.extract()?;
+        Self::try_from_primitive(index).map_err(|_| PyValueError::new_err("Invalid action"))
+    }
 }
 
 /// Wraps our game in a gym-like interface.
@@ -148,6 +156,8 @@ impl Default for GameWrapper {
 #[pymodule]
 fn webgame_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<GameWrapper>()?;
-    m.add_class::<AgentAction>()?;
+    m.add_class::<GameState>()?;
+    m.add_class::<AgentState>()?;
+    m.add_class::<PyVec2>()?;
     Ok(())
 }
