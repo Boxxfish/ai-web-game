@@ -1,5 +1,7 @@
 use bevy::{prelude::*, sprite::Anchor};
-use bevy_rapier2d::{control::KinematicCharacterController, dynamics::RigidBody, geometry::Collider};
+use bevy_rapier2d::{
+    control::KinematicCharacterController, dynamics::RigidBody, geometry::Collider,
+};
 use rand::Rng;
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -8,7 +10,8 @@ pub struct GridworldPlugin;
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE))
-            .add_systems(Startup, setup_entities);
+            .add_systems(Startup, setup_entities)
+            .add_systems(Update, move_agents);
     }
 }
 
@@ -23,7 +26,7 @@ impl Plugin for GridworldPlayPlugin {
                 (
                     visualize_agent::<PursuerAgent>(Color::RED),
                     visualize_agent::<PlayerAgent>(Color::GREEN),
-                    move_player,
+                    set_player_action,
                 ),
             );
     }
@@ -50,6 +53,19 @@ impl LevelLayout {
     }
 }
 
+/// State used by all agents.
+#[derive(Component)]
+pub struct Agent {
+    /// The direction the agent is currently looking at.
+    pub dir: Vec2,
+}
+
+impl Default for Agent {
+    fn default() -> Self {
+        Self { dir: Vec2::X }
+    }
+}
+
 // Indicates the Pursuer agent.
 #[derive(Component)]
 pub struct PursuerAgent;
@@ -62,6 +78,8 @@ pub struct PlayerAgent;
 fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     commands.spawn((
         PursuerAgent,
+        Agent::default(),
+        NextAction::default(),
         Collider::ball(GRID_CELL_SIZE * 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
@@ -69,6 +87,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     ));
     commands.spawn((
         PlayerAgent,
+        Agent::default(),
+        NextAction::default(),
         Collider::ball(GRID_CELL_SIZE * 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
@@ -191,11 +211,17 @@ fn visualize_agent<T: Component>(
 
 const AGENT_SPEED: f32 = GRID_CELL_SIZE * 2.;
 
-/// Allows the player to move the Player agent around.
-fn move_player(
+/// Holds the next action for an agent.
+#[derive(Default, Component)]
+pub struct NextAction {
+    /// Which direction the agent will move in.
+    pub dir: Vec2,
+}
+
+/// Allows the player to set the Players next action.
+fn set_player_action(
     inpt: Res<Input<KeyCode>>,
-    time: Res<Time>,
-    mut player_query: Query<&mut KinematicCharacterController, With<PlayerAgent>>,
+    mut player_query: Query<&mut NextAction, With<PlayerAgent>>,
 ) {
     let mut dir = Vec2::ZERO;
     if inpt.pressed(KeyCode::W) {
@@ -210,6 +236,21 @@ fn move_player(
     if inpt.pressed(KeyCode::D) {
         dir.x += 1.;
     }
-    let mut controller = player_query.single_mut();
-    controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+    let mut next_action = player_query.single_mut();
+    next_action.dir = dir;
+}
+
+/// Moves agents around.
+fn move_agents(
+    mut agent_query: Query<(&mut Agent, &mut KinematicCharacterController, &NextAction)>,
+    time: Res<Time>,
+) {
+    for (mut agent, mut controller, next_action) in agent_query.iter_mut() {
+        let dir = next_action.dir;
+        if dir.length_squared() > 0.1 {
+            let dir = dir.normalize();
+            agent.dir = dir;
+            controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+        }
+    }
 }
