@@ -51,6 +51,7 @@ fn draw_observer_areas(
     observer_query: Query<(Entity, &Transform, &Agent), (With<Observer>, With<DebugObserver>)>,
     rapier_ctx: Res<RapierContext>,
     mut gizmos: Gizmos,
+    time: Res<Time>,
 ) {
     // Collect wall endpoints
     let mut all_endpoints = Vec::new();
@@ -94,8 +95,14 @@ fn draw_observer_areas(
         });
 
         let mut all_tris = Vec::new();
-        for p in &sorted_endpoints {
-            let dir = (*p - start).normalize();
+        let first_idx = sorted_endpoints
+            .iter()
+            .position(|p| p.abs_diff_eq(start + cone_l, 0.1))
+            .unwrap_or(0);
+        for i in 0..sorted_endpoints.len() {
+            let i = (i + first_idx) % sorted_endpoints.len();
+            let p = sorted_endpoints[i];
+            let dir = (p - start).normalize();
             let mut tri = Vec::new();
             for mat in [Mat2::from_angle(-0.001), Mat2::from_angle(0.001)] {
                 let dir = mat * dir;
@@ -115,7 +122,7 @@ fn draw_observer_areas(
             }
         }
         if !all_tris.is_empty() {
-            for i in 0..all_tris.len() {
+            for i in 0..(all_tris.len() - 1) {
                 let next_i = (i + 1) % all_tris.len();
                 let tri = &all_tris[i];
                 let next_tri = &all_tris[next_i];
