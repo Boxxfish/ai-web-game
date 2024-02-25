@@ -52,7 +52,6 @@ fn draw_observer_areas(
     // Draw wall endpoints
     let point_size = 1.;
     let mut all_endpoints = Vec::new();
-    let mut all_walls = Vec::new();
     for (wall_xform, wall_c) in wall_query.iter() {
         let rect = wall_c.as_cuboid().unwrap();
         let half = rect.raw.half_extents.xy();
@@ -67,12 +66,6 @@ fn draw_observer_areas(
             gizmos.circle_2d(*p, point_size, Color::GREEN);
         }
         all_endpoints.extend_from_slice(&endpoints);
-        all_walls.extend_from_slice(&[
-            [endpoints[0], endpoints[1]],
-            [endpoints[1], endpoints[2]],
-            [endpoints[2], endpoints[3]],
-            [endpoints[3], endpoints[0]],
-        ]);
     }
 
     // Draw per agent visibility triangles
