@@ -4,7 +4,7 @@ use bevy_rapier2d::{
 };
 use rand::Rng;
 
-use crate::observer::{Observable, Observer, Wall};
+use crate::observer::{DebugObserver, Observable, Observer, Wall};
 
 /// Plugin for basic game features, such as moving around and not going through walls.
 pub struct GridworldPlugin;
@@ -99,6 +99,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         TransformBundle::from_transform(Transform::from_translation(Vec3::new(40., 30., 0.))),
         Observer::default(),
         Observable,
+        DebugObserver,
     ));
 
     // Set up walls
