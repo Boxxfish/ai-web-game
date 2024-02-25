@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_rapier2d::{math::Real, na::ComplexField, prelude::*};
+use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
 use crate::gridworld::Agent;
@@ -26,6 +26,8 @@ impl Plugin for ObserverPlayPlugin {
 #[derive(Default, Component)]
 pub struct Observer {
     pub observing: Vec<Entity>,
+    /// Stores a list of triangles that make up the observer's field of vision.
+    pub vis_mesh: Vec<[Vec2; 3]>,
 }
 
 /// Indicates that this entity can be observed.
@@ -42,16 +44,10 @@ pub struct DebugObserver;
 pub struct Wall;
 
 /// Updates observers with observable entities they can see.
-fn update_observers() {}
-
-/// Draws parts of the room observers can see.
-#[allow(clippy::type_complexity)]
-fn draw_observer_areas(
+fn update_observers(
     wall_query: Query<(Entity, &Transform, &Collider), With<Wall>>,
-    observer_query: Query<(Entity, &Transform, &Agent), (With<Observer>, With<DebugObserver>)>,
+    mut observer_query: Query<(&mut Observer, &Transform, &Agent)>,
     rapier_ctx: Res<RapierContext>,
-    mut gizmos: Gizmos,
-    time: Res<Time>,
 ) {
     // Collect wall endpoints
     let mut all_endpoints = Vec::new();
@@ -70,15 +66,12 @@ fn draw_observer_areas(
 
     // Draw per agent visibility triangles
     let walls = wall_query.iter().map(|(e, _, _)| e).collect::<Vec<_>>();
-    for (_, observer_xform, agent) in observer_query.iter() {
+    for (mut observer, observer_xform, agent) in observer_query.iter_mut() {
         // Draw vision cone
         let fov = 60_f32.to_radians();
         let start = observer_xform.translation.xy();
         let cone_l = Mat2::from_angle(-fov / 2.) * agent.dir;
         let cone_r = Mat2::from_angle(fov / 2.) * agent.dir;
-        gizmos.line_2d(start, start + agent.dir * 10., Color::AQUAMARINE);
-        gizmos.line_2d(start, start + cone_l * 40., Color::YELLOW);
-        gizmos.line_2d(start, start + cone_r * 40., Color::YELLOW);
 
         // Add cone boundaries to endpoints
         let mut sorted_endpoints = all_endpoints.clone();
@@ -94,11 +87,13 @@ fn draw_observer_areas(
             OrderedFloat(dir.x * -dir.y.signum() - dir.y.signum())
         });
 
-        let mut all_tris = Vec::new();
         let first_idx = sorted_endpoints
             .iter()
             .position(|p| p.abs_diff_eq(start + cone_l, 0.1))
             .unwrap_or(0);
+
+        // Sweep from `cone_l` to `cone_r`
+        let mut all_tris = Vec::new();
         for i in 0..sorted_endpoints.len() {
             let i = (i + first_idx) % sorted_endpoints.len();
             let p = sorted_endpoints[i];
@@ -121,16 +116,40 @@ fn draw_observer_areas(
                 all_tris.push(tri);
             }
         }
+
+        // Generate new vision mesh
+        let mut vis_mesh = Vec::new();
         if !all_tris.is_empty() {
             for i in 0..(all_tris.len() - 1) {
                 let next_i = (i + 1) % all_tris.len();
                 let tri = &all_tris[i];
                 let next_tri = &all_tris[next_i];
-                gizmos.linestrip_2d(
-                    [start, tri[1], next_tri[0], start],
-                    Color::YELLOW.with_a(0.01),
-                );
+                vis_mesh.push([start, tri[1], next_tri[0]]);
             }
+        }
+        observer.vis_mesh = vis_mesh;
+    }
+}
+
+/// Draws parts of the room observers can see.
+#[allow(clippy::type_complexity)]
+fn draw_observer_areas(
+    observer_query: Query<(&Observer, &Transform, &Agent), With<DebugObserver>>,
+    mut gizmos: Gizmos,
+) {
+    for (observer, observer_xform, agent) in observer_query.iter() {
+        // Draw vision cone
+        let fov = 60_f32.to_radians();
+        let start = observer_xform.translation.xy();
+        let cone_l = Mat2::from_angle(-fov / 2.) * agent.dir;
+        let cone_r = Mat2::from_angle(fov / 2.) * agent.dir;
+        gizmos.line_2d(start, start + agent.dir * 10., Color::AQUAMARINE);
+        gizmos.line_2d(start, start + cone_l * 40., Color::YELLOW);
+        gizmos.line_2d(start, start + cone_r * 40., Color::YELLOW);
+
+        // Draw visible areas
+        for tri in &observer.vis_mesh {
+            gizmos.linestrip_2d([tri[0], tri[1], tri[2], tri[0]], Color::YELLOW.with_a(0.01));
         }
     }
 }
