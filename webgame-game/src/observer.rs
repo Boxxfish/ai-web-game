@@ -25,6 +25,7 @@ impl Plugin for ObserverPlayPlugin {
 /// Indicates that this entity can observe observable entities.
 #[derive(Default, Component)]
 pub struct Observer {
+    /// Entities the observer can see.
     pub observing: Vec<Entity>,
     /// Stores a list of triangles that make up the observer's field of vision.
     pub vis_mesh: Vec<[Vec2; 3]>,
@@ -46,7 +47,8 @@ pub struct Wall;
 /// Updates observers with observable entities they can see.
 fn update_observers(
     wall_query: Query<(Entity, &Transform, &Collider), With<Wall>>,
-    mut observer_query: Query<(&mut Observer, &Transform, &Agent)>,
+    mut observer_query: Query<(Entity, &mut Observer, &Transform, &Agent)>,
+    observable_query: Query<(Entity, &Transform), With<Observable>>,
     rapier_ctx: Res<RapierContext>,
 ) {
     // Collect wall endpoints
@@ -66,7 +68,7 @@ fn update_observers(
 
     // Draw per agent visibility triangles
     let walls = wall_query.iter().map(|(e, _, _)| e).collect::<Vec<_>>();
-    for (mut observer, observer_xform, agent) in observer_query.iter_mut() {
+    for (observer_e, mut observer, observer_xform, agent) in observer_query.iter_mut() {
         // Draw vision cone
         let fov = 60_f32.to_radians();
         let start = observer_xform.translation.xy();
@@ -128,7 +130,37 @@ fn update_observers(
             }
         }
         observer.vis_mesh = vis_mesh;
+
+        // Check which observable objects fall within the mesh
+        let mut observing = Vec::new();
+        for (observable_e, observable_xform) in observable_query.iter() {
+            if observable_e == observer_e {
+                continue;
+            }
+
+            let p = observable_xform.translation.xy();
+            for tri in &observer.vis_mesh {
+                let d1 = sign(p, tri[0], tri[1]);
+                let d2 = sign(p, tri[1], tri[2]);
+                let d3 = sign(p, tri[2], tri[0]);
+
+                let has_neg = d1 < 0. || d2 < 0. || d3 < 0.;
+                let has_pos = d1 > 0. || d2 > 0. || d3 > 0.;
+
+                if !(has_neg && has_pos) {
+                    observing.push(observable_e);
+                    break;
+                }
+            }
+        }
+        observer.observing = observing;
+        info!("{:?}", observer.observing);
     }
+}
+
+/// Helper function for detecting if a point is in a triangle.
+fn sign(p1: Vec2, p2: Vec2, p3: Vec2) -> f32 {
+    (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
 }
 
 /// Draws parts of the room observers can see.
