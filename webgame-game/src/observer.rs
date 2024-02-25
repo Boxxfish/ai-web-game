@@ -1,6 +1,8 @@
 use bevy::prelude::*;
-use bevy_rapier2d::{math::Real, prelude::*};
+use bevy_rapier2d::{math::Real, na::ComplexField, prelude::*};
 use ordered_float::OrderedFloat;
+
+use crate::gridworld::Agent;
 
 /// Plugins for determining what agents can see.
 pub struct ObserverPlugin;
@@ -16,7 +18,7 @@ pub struct ObserverPlayPlugin;
 
 impl Plugin for ObserverPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (draw_observer_areas, draw_observed));
+        app.add_systems(Update, draw_observer_areas);
     }
 }
 
@@ -46,12 +48,11 @@ fn update_observers() {}
 #[allow(clippy::type_complexity)]
 fn draw_observer_areas(
     wall_query: Query<(Entity, &Transform, &Collider), With<Wall>>,
-    observer_query: Query<(Entity, &Transform), (With<Observer>, With<DebugObserver>)>,
+    observer_query: Query<(Entity, &Transform, &Agent), (With<Observer>, With<DebugObserver>)>,
     rapier_ctx: Res<RapierContext>,
     mut gizmos: Gizmos,
 ) {
-    // Draw wall endpoints
-    let point_size = 1.;
+    // Collect wall endpoints
     let mut all_endpoints = Vec::new();
     for (_, wall_xform, wall_c) in wall_query.iter() {
         let rect = wall_c.as_cuboid().unwrap();
@@ -68,17 +69,29 @@ fn draw_observer_areas(
 
     // Draw per agent visibility triangles
     let walls = wall_query.iter().map(|(e, _, _)| e).collect::<Vec<_>>();
-    for (_, observer_xform) in observer_query.iter() {
-        // Sort endpoints by angle
+    for (_, observer_xform, agent) in observer_query.iter() {
+        // Draw vision cone
+        let fov = 60_f32.to_radians();
         let start = observer_xform.translation.xy();
+        let cone_l = Mat2::from_angle(-fov / 2.) * agent.dir;
+        let cone_r = Mat2::from_angle(fov / 2.) * agent.dir;
+        gizmos.line_2d(start, start + agent.dir * 10., Color::AQUAMARINE);
+        gizmos.line_2d(start, start + cone_l * 40., Color::YELLOW);
+        gizmos.line_2d(start, start + cone_r * 40., Color::YELLOW);
+
+        // Add cone boundaries to endpoints
         let mut sorted_endpoints = all_endpoints.clone();
+        sorted_endpoints.extend_from_slice(&[start + cone_l, start + cone_r]);
+
+        // Sort endpoints by angle and remove any points not within the vision cone
+        sorted_endpoints.retain_mut(|p| {
+            let dir = (*p - start).normalize();
+            dir.dot(agent.dir).acos() <= fov / 2. + 0.01
+        });
         sorted_endpoints.sort_unstable_by_key(|p| {
             let dir = (*p - start).normalize();
             OrderedFloat(dir.x * -dir.y.signum() - dir.y.signum())
         });
-        for p in &sorted_endpoints {
-            gizmos.circle_2d(*p, point_size, Color::GREEN);
-        }
 
         let mut all_tris = Vec::new();
         for p in &sorted_endpoints {
@@ -101,17 +114,16 @@ fn draw_observer_areas(
                 all_tris.push(tri);
             }
         }
-        for i in 0..all_tris.len() {
-            let next_i = (i + 1) % all_tris.len();
-            let tri = &all_tris[i];
-            let next_tri = &all_tris[next_i];
-            gizmos.linestrip_2d(
-                [start, tri[1], next_tri[0], start],
-                Color::YELLOW.with_a(0.2),
-            );
+        if !all_tris.is_empty() {
+            for i in 0..all_tris.len() {
+                let next_i = (i + 1) % all_tris.len();
+                let tri = &all_tris[i];
+                let next_tri = &all_tris[next_i];
+                gizmos.linestrip_2d(
+                    [start, tri[1], next_tri[0], start],
+                    Color::YELLOW.with_a(0.01),
+                );
+            }
         }
     }
 }
-
-/// Indicates which observers are looking at which observable entities.
-fn draw_observed() {}
