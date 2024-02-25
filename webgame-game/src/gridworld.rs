@@ -4,6 +4,8 @@ use bevy_rapier2d::{
 };
 use rand::Rng;
 
+use crate::observer::{Observable, Observer, Wall};
+
 /// Plugin for basic game features, such as moving around and not going through walls.
 pub struct GridworldPlugin;
 
@@ -84,6 +86,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
         TransformBundle::from_transform(Transform::from_translation(Vec3::new(20., 0., 0.))),
+        Observer::default(),
+        Observable,
     ));
     commands.spawn((
         PlayerAgent,
@@ -93,6 +97,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
         TransformBundle::from_transform(Transform::from_translation(Vec3::new(40., 30., 0.))),
+        Observer::default(),
+        Observable,
     ));
 
     // Set up walls
@@ -100,6 +106,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
                 commands.spawn((
+                    Wall,
                     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
                     TransformBundle::from_transform(Transform::from_translation(
                         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
@@ -116,6 +123,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     for i in 0..4 {
         let positions = [wall_positions[i % 2], wall_pos_offset];
         commands.spawn((
+            Wall,
             Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
             TransformBundle::from_transform(Transform::from_translation(Vec3::new(
                 positions[i / 2],
