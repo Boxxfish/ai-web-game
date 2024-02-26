@@ -1,10 +1,23 @@
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::LibCfgPlugin,
     gridworld::{Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent},
+    observer::{Observable, Observer},
 };
+
+/// Describes an observable object.
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct ObservableObject {
+    #[pyo3(get)]
+    pub pos: PyVec2,
+    #[pyo3(get)]
+    pub obj_type: String,
+}
 
 /// Represents a 2D vector.
 #[pyclass]
@@ -16,6 +29,15 @@ pub struct PyVec2 {
     pub y: f32,
 }
 
+impl From<Vec2> for PyVec2 {
+    fn from(value: Vec2) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
 /// Contains the state of an agent for a single frame.
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -24,6 +46,8 @@ pub struct AgentState {
     pub pos: PyVec2,
     #[pyo3(get)]
     pub dir: PyVec2,
+    #[pyo3(get)]
+    pub observing: Vec<u64>,
 }
 
 /// Contains the state of the game for a single frame.
@@ -38,6 +62,8 @@ pub struct GameState {
     pub walls: Vec<bool>,
     #[pyo3(get)]
     pub level_size: usize,
+    #[pyo3(get)]
+    pub objects: HashMap<u64, ObservableObject>,
 }
 
 /// Indicates the kind of actions an agent can take.
@@ -117,18 +143,13 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
 
 /// Queries the world for an agent with the provided component and returns an `AgentState`.
 fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
-    let (agent, xform) = world
-        .query_filtered::<(&Agent, &Transform), With<T>>()
+    let (agent, xform, observer) = world
+        .query_filtered::<(&Agent, &Transform, &Observer), With<T>>()
         .single(world);
     AgentState {
-        pos: PyVec2 {
-            x: xform.translation.x,
-            y: xform.translation.y,
-        },
-        dir: PyVec2 {
-            x: agent.dir.x,
-            y: agent.dir.y,
-        },
+        pos: xform.translation.xy().into(),
+        dir: agent.dir.into(),
+        observing: observer.observing.iter().map(|e| e.to_bits()).collect(),
     }
 }
 
@@ -137,12 +158,27 @@ impl GameWrapper {
         let world = &mut self.app.world;
         let player = get_agent_state::<PlayerAgent>(world);
         let pursuer = get_agent_state::<PursuerAgent>(world);
+        let mut observables =
+            world.query_filtered::<(Entity, &Transform, Option<&Agent>), With<Observable>>();
+        let mut objects = HashMap::new();
+        for (e, xform, agent) in observables.iter(world) {
+            if agent.is_some() {
+                objects.insert(
+                    e.to_bits(),
+                    ObservableObject {
+                        pos: xform.translation.xy().into(),
+                        obj_type: "agent".into(),
+                    },
+                );
+            }
+        }
         let level = world.get_resource::<LevelLayout>().unwrap();
         GameState {
             player,
             pursuer,
             walls: level.walls.clone(),
             level_size: level.size,
+            objects,
         }
     }
 }
@@ -156,6 +192,7 @@ impl Default for GameWrapper {
 #[pymodule]
 fn webgame_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<GameWrapper>()?;
+    m.add_class::<ObservableObject>()?;
     m.add_class::<GameState>()?;
     m.add_class::<AgentState>()?;
     m.add_class::<PyVec2>()?;

@@ -1,5 +1,12 @@
 from typing import *
 
+class ObservableObj:
+    """
+    Describes an observable object.
+    """
+    pos: PyVec2
+    obj_type: str
+
 class PyVec2:
     """
     Represents a 2D vector.
@@ -13,6 +20,7 @@ class AgentState:
     """
     pos: PyVec2
     dir: PyVec2
+    observing: list[int]
 
 class GameState:
     """
@@ -22,6 +30,7 @@ class GameState:
     pursuer: AgentState
     walls: list[bool]
     level_size: int
+    objects: Mapping[int, ObservableObj]
 
 class GameWrapper:
     def __init__(self) -> None: ...
