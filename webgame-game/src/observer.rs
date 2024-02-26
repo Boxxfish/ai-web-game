@@ -154,7 +154,6 @@ fn update_observers(
             }
         }
         observer.observing = observing;
-        info!("{:?}", observer.observing);
     }
 }
 
