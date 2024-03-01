@@ -4,6 +4,7 @@ use configs::ReleaseCfgPlugin;
 mod net;
 mod configs;
 mod gridworld;
+mod observer;
 
 /// Main entry point for our game.
 fn main() {

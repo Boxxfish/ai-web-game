@@ -25,6 +25,7 @@ jobs:
         cargo install wasm-bindgen-cli
     - uses: Swatinem/rust-cache@v2
       with:
+        workspaces: webgame-game
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: |
         cd webgame-game
