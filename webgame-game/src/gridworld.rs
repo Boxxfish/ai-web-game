@@ -4,7 +4,7 @@ use bevy_rapier2d::{
 };
 use rand::Rng;
 
-use crate::observer::{DebugObserver, Observable, Observer, Wall};
+use crate::{observer::{DebugObserver, Observable, Observer, Wall}, world_objs::Door};
 
 /// Plugin for basic game features, such as moving around and not going through walls.
 pub struct GridworldPlugin;
@@ -34,7 +34,10 @@ impl Plugin for GridworldPlayPlugin {
     }
 }
 
+/// The width and height of the level by default.
 pub const DEFAULT_LEVEL_SIZE: usize = 8;
+/// The probability of a door spawning in an empty cell.
+pub const DOOR_PROB: f64 = 0.05;
 
 /// Stores the layout of the level.
 #[derive(Resource)]
@@ -102,7 +105,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         DebugObserver,
     ));
 
-    // Set up walls
+    // Set up walls and doors
+    let mut rng = rand::thread_rng();
     for y in 0..level.size {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
@@ -112,6 +116,15 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                     TransformBundle::from_transform(Transform::from_translation(
                         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
                     )),
+                ));
+            }
+            else if rng.gen_bool(DOOR_PROB) {
+                commands.spawn((
+                    Door::default(),
+                    Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
+                    TransformBundle::from_transform(Transform::from_translation(
+                        Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
+                    )), 
                 ));
             }
         }
@@ -135,7 +148,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     }
 }
 
-const GRID_CELL_SIZE: f32 = 25.;
+pub const GRID_CELL_SIZE: f32 = 25.;
 
 /// Sets up entities for playable mode.
 fn setup_entities_playable(mut commands: Commands, level: Res<LevelLayout>) {
