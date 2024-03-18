@@ -4,7 +4,10 @@ use bevy_rapier2d::{
 };
 use rand::Rng;
 
-use crate::{observer::{DebugObserver, Observable, Observer, Wall}, world_objs::Door};
+use crate::{
+    observer::{DebugObserver, Observable, Observer, Wall},
+    world_objs::Door,
+};
 
 /// Plugin for basic game features, such as moving around and not going through walls.
 pub struct GridworldPlugin;
@@ -117,14 +120,13 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
                     )),
                 ));
-            }
-            else if rng.gen_bool(DOOR_PROB) {
+            } else if rng.gen_bool(DOOR_PROB) {
                 commands.spawn((
                     Door::default(),
                     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
                     TransformBundle::from_transform(Transform::from_translation(
                         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
-                    )), 
+                    )),
                 ));
             }
         }
@@ -238,6 +240,8 @@ const AGENT_SPEED: f32 = GRID_CELL_SIZE * 2.;
 pub struct NextAction {
     /// Which direction the agent will move in.
     pub dir: Vec2,
+    /// Whether the agent should toggle nearby objects this frame.
+    pub toggle_objs: bool,
 }
 
 /// Allows the player to set the Players next action.
@@ -260,6 +264,10 @@ fn set_player_action(
     }
     let mut next_action = player_query.single_mut();
     next_action.dir = dir;
+    next_action.toggle_objs = false;
+    if inpt.just_pressed(KeyCode::F) {
+        next_action.toggle_objs = true;
+    }
 }
 
 /// Moves agents around.
