@@ -246,26 +246,26 @@ pub struct NextAction {
 
 /// Allows the player to set the Players next action.
 fn set_player_action(
-    inpt: Res<Input<KeyCode>>,
+    inpt: Res<ButtonInput<KeyCode>>,
     mut player_query: Query<&mut NextAction, With<PlayerAgent>>,
 ) {
     let mut dir = Vec2::ZERO;
-    if inpt.pressed(KeyCode::W) {
+    if inpt.pressed(KeyCode::KeyW) {
         dir.y += 1.;
     }
-    if inpt.pressed(KeyCode::S) {
+    if inpt.pressed(KeyCode::KeyS) {
         dir.y -= 1.;
     }
-    if inpt.pressed(KeyCode::A) {
+    if inpt.pressed(KeyCode::KeyA) {
         dir.x -= 1.;
     }
-    if inpt.pressed(KeyCode::D) {
+    if inpt.pressed(KeyCode::KeyD) {
         dir.x += 1.;
     }
     let mut next_action = player_query.single_mut();
     next_action.dir = dir;
     next_action.toggle_objs = false;
-    if inpt.just_pressed(KeyCode::F) {
+    if inpt.just_pressed(KeyCode::KeyF) {
         next_action.toggle_objs = true;
     }
 }

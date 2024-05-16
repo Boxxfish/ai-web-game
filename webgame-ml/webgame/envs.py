@@ -1,7 +1,7 @@
 from typing import *
 import gymnasium as gym
 import pettingzoo  # type: ignore
-import rerun as rr  # type: ignore
+# import rerun as rr  # type: ignore
 from webgame_rust import AgentState, GameWrapper, GameState
 import numpy as np
 import functools
@@ -24,10 +24,13 @@ class GameEnv(pettingzoo.ParallelEnv):
     an agent's POV, and the second item is a 2D map showing where walls are.
 
     Action Space: Discrete, check the `AgentAction` enum for a complete list.
+
+    Args:
+        visualize: If we should log visuals to Rerun.
     """
 
-    def __init__(self):
-        self.game = GameWrapper()
+    def __init__(self, visualize: bool = False):
+        self.game = GameWrapper(visualize)
         self.game_state: Optional[GameState] = None
         self.last_obs: Optional[Mapping[str, tuple[np.ndarray, np.ndarray]]] = None
         self.possible_agents = ["player", "pursuer"]
@@ -91,72 +94,72 @@ class GameEnv(pettingzoo.ParallelEnv):
             )
         )
 
-    def log_render(self):
-        """
-        When called, logs a visual to the current recording.
-        This allows both saving episodes and watching them live.
-        """
-        if self.game_state:
-            walls = 1 - np.array(self.game_state.walls, dtype=float).reshape(
-                (self.level_size, self.level_size)
-            )
-            rr.log("game/walls", rr.Image(walls))
-            player_dir = self.game_state.player.dir
-            player_pos = (
-                np.array(
-                    [
-                        self.game_state.player.pos.x,
-                        self.level_size * CELL_SIZE - self.game_state.player.pos.y - CELL_SIZE,
-                    ]
-                )
-                / CELL_SIZE
-                + 0.5
-            )
-            rr.log(
-                "game/player_pos",
-                rr.Points2D([player_pos], radii=0.25, colors=(0.0, 1.0, 0.0)),
-            )
-            rr.log(
-                "game/player_dir",
-                rr.LineStrips2D(
-                    [player_pos, player_pos + np.array([player_dir.x, -player_dir.y])],
-                    colors=(0.0, 1.0, 0.0),
-                ),
-            )
-            pursuer_dir = self.game_state.pursuer.dir
-            pursuer_pos = (
-                np.array(
-                    [
-                        self.game_state.pursuer.pos.x,
-                        self.level_size * CELL_SIZE - self.game_state.pursuer.pos.y - CELL_SIZE,
-                    ]
-                )
-                / CELL_SIZE
-                + 0.5
-            )
-            rr.log(
-                "game/pursuer_pos",
-                rr.Points2D([pursuer_pos], radii=0.25, colors=(1.0, 0.0, 0.0)),
-            )
-            rr.log(
-                "game/pursuer_dir",
-                rr.LineStrips2D(
-                    [
-                        pursuer_pos,
-                        pursuer_pos + np.array([pursuer_dir.x, -pursuer_dir.y]),
-                    ],
-                    colors=(1.0, 0.0, 0.0),
-                ),
-            )
-            for agent in ["player", "pursuer"]:
-                rr.log(
-                    f"obs/{agent}/objects",
-                    rr.Tensor(self.last_obs[agent][0]),
-                )
-                rr.log(
-                    f"obs/{agent}/map",
-                    rr.Tensor(self.last_obs[agent][1]),
-                )
+    # def log_render(self):
+    #     """
+    #     When called, logs a visual to the current recording.
+    #     This allows both saving episodes and watching them live.
+    #     """
+    #     if self.game_state:
+    #         walls = 1 - np.array(self.game_state.walls, dtype=float).reshape(
+    #             (self.level_size, self.level_size)
+    #         )
+    #         rr.log("game/walls", rr.Image(walls))
+    #         player_dir = self.game_state.player.dir
+    #         player_pos = (
+    #             np.array(
+    #                 [
+    #                     self.game_state.player.pos.x,
+    #                     self.level_size * CELL_SIZE - self.game_state.player.pos.y - CELL_SIZE,
+    #                 ]
+    #             )
+    #             / CELL_SIZE
+    #             + 0.5
+    #         )
+    #         rr.log(
+    #             "game/player_pos",
+    #             rr.Points2D([player_pos], radii=0.25, colors=(0.0, 1.0, 0.0)),
+    #         )
+    #         rr.log(
+    #             "game/player_dir",
+    #             rr.LineStrips2D(
+    #                 [player_pos, player_pos + np.array([player_dir.x, -player_dir.y])],
+    #                 colors=(0.0, 1.0, 0.0),
+    #             ),
+    #         )
+    #         pursuer_dir = self.game_state.pursuer.dir
+    #         pursuer_pos = (
+    #             np.array(
+    #                 [
+    #                     self.game_state.pursuer.pos.x,
+    #                     self.level_size * CELL_SIZE - self.game_state.pursuer.pos.y - CELL_SIZE,
+    #                 ]
+    #             )
+    #             / CELL_SIZE
+    #             + 0.5
+    #         )
+    #         rr.log(
+    #             "game/pursuer_pos",
+    #             rr.Points2D([pursuer_pos], radii=0.25, colors=(1.0, 0.0, 0.0)),
+    #         )
+    #         rr.log(
+    #             "game/pursuer_dir",
+    #             rr.LineStrips2D(
+    #                 [
+    #                     pursuer_pos,
+    #                     pursuer_pos + np.array([pursuer_dir.x, -pursuer_dir.y]),
+    #                 ],
+    #                 colors=(1.0, 0.0, 0.0),
+    #             ),
+    #         )
+    #         for agent in ["player", "pursuer"]:
+    #             rr.log(
+    #                 f"obs/{agent}/objects",
+    #                 rr.Tensor(self.last_obs[agent][0]),
+    #             )
+    #             rr.log(
+    #                 f"obs/{agent}/map",
+    #                 rr.Tensor(self.last_obs[agent][1]),
+    #             )
 
 
 def game_state_to_obs(
@@ -191,11 +194,8 @@ def agent_state_to_obs(
 
 
 if __name__ == "__main__":
-    rr.init("Env Test")
-    rr.connect()
-
-    env = GameEnv()
-    env.reset()
+    env = GameEnv(visualize=True)
+    # env.reset()
     for _ in range(1000):
         env.step(
             {
@@ -203,4 +203,3 @@ if __name__ == "__main__":
                 "pursuer": env.action_space("pursuer").sample(),
             }
         )
-        env.log_render()

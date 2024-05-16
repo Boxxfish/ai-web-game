@@ -33,7 +33,12 @@ class GameState:
     objects: Mapping[int, ObservableObj]
 
 class GameWrapper:
-    def __init__(self) -> None: ...
+    def __init__(self, visualize: bool) -> None:
+        """
+        Args:
+            visualize: If we should log visuals to Rerun.
+        """
+        ...
     def step(
         self, action_player: int, action_pursuer: int
     ) -> GameState:

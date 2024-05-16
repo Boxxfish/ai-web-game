@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use bevy::prelude::*;
+use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    configs::LibCfgPlugin,
+    configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent},
     observer::{Observable, Observer},
 };
@@ -67,7 +67,7 @@ pub struct GameState {
 }
 
 /// Indicates the kind of actions an agent can take.
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AgentAction {
     NoAction = 0,
@@ -93,20 +93,25 @@ impl<'source> FromPyObject<'source> for AgentAction {
 #[pyclass]
 pub struct GameWrapper {
     pub app: App,
+    pub visualize: bool,
 }
 
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new() -> Self {
+    pub fn new(visualize: bool) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
+
+        if visualize {
+            app.add_plugins(VisualizerPlugin);
+        }
 
         app.finish();
         app.cleanup();
         app.update();
 
-        Self { app }
+        Self { app, visualize }
     }
 
     pub fn step(&mut self, action_player: AgentAction, action_pursuer: AgentAction) -> GameState {
@@ -119,7 +124,9 @@ impl GameWrapper {
     }
 
     pub fn reset(&mut self) -> GameState {
-        *self = Self::new();
+        self.app.world.send_event(AppExit);
+        self.app.update();
+        *self = Self::new(self.visualize);
         self.get_state()
     }
 }
@@ -140,7 +147,7 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
         AgentAction::MoveUpLeft => (Vec2::Y + -Vec2::X).normalize(),
         _ => Vec2::ZERO,
     };
-    action.toggle_obj = action == AgentAction::ToggleObj;
+    next_action.toggle_objs = action == AgentAction::ToggleObj;
 }
 
 /// Queries the world for an agent with the provided component and returns an `AgentState`.
@@ -187,7 +194,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 

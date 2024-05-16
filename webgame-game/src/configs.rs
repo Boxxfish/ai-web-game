@@ -3,8 +3,7 @@
 use std::time::Duration;
 
 use bevy::{
-    asset::AssetMetaCheck, input::InputPlugin, prelude::*, scene::ScenePlugin,
-    time::TimeUpdateStrategy,
+    a11y::AccessibilityPlugin, asset::AssetMetaCheck, core_pipeline::CorePipelinePlugin, input::InputPlugin, prelude::*, render::{camera::CameraPlugin, mesh::MeshPlugin, RenderPlugin}, scene::ScenePlugin, time::TimeUpdateStrategy, winit::WinitPlugin
 };
 use bevy_rapier2d::prelude::*;
 
@@ -61,12 +60,11 @@ const FIXED_TS: f32 = 0.02;
 impl Plugin for LibCfgPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
-            MinimalPlugins,
-            TransformPlugin,
-            HierarchyPlugin,
-            InputPlugin,
-            AssetPlugin::default(),
-            ScenePlugin,
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: None,
+                exit_condition: bevy::window::ExitCondition::DontExit,
+                close_when_requested: false,
+            }),
             CoreGamePlugin,
         ))
         // Use constant timestep
@@ -79,6 +77,20 @@ impl Plugin for LibCfgPlugin {
                 substeps: 10,
             },
             ..default()
+        });
+    }
+}
+
+/// Optional plugin for library builds, adds support for Rerun visuals.
+pub struct VisualizerPlugin;
+
+impl Plugin for VisualizerPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins({
+            let rec = revy::RecordingStreamBuilder::new("Pursuer")
+                .spawn()
+                .unwrap();
+            revy::RerunPlugin { rec }
         });
     }
 }
