@@ -2,9 +2,7 @@
 
 use std::time::Duration;
 
-use bevy::{
-    a11y::AccessibilityPlugin, asset::AssetMetaCheck, core_pipeline::CorePipelinePlugin, input::InputPlugin, prelude::*, render::{camera::CameraPlugin, mesh::MeshPlugin, RenderPlugin}, scene::ScenePlugin, time::TimeUpdateStrategy, winit::WinitPlugin
-};
+use bevy::{asset::AssetMetaCheck, prelude::*, time::TimeUpdateStrategy};
 use bevy_rapier2d::prelude::*;
 
 use crate::{
@@ -60,11 +58,13 @@ const FIXED_TS: f32 = 0.02;
 impl Plugin for LibCfgPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: None,
-                exit_condition: bevy::window::ExitCondition::DontExit,
-                close_when_requested: false,
-            }),
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: None,
+                    exit_condition: bevy::window::ExitCondition::DontExit,
+                    close_when_requested: false,
+                })
+                .set(ImagePlugin::default_nearest()),
             CoreGamePlugin,
         ))
         // Use constant timestep

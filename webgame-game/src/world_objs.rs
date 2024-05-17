@@ -10,7 +10,7 @@ pub struct WorldObjPlugin;
 
 impl Plugin for WorldObjPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_door);
+        app.add_systems(Update, (update_door, visualize_door));
     }
 }
 
@@ -19,7 +19,7 @@ pub struct WorldObjPlayPlugin;
 
 impl Plugin for WorldObjPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, visualize_door);
+        // app.add_systems(Update, visualize_door);
     }
 }
 

@@ -16,7 +16,14 @@ impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE))
             .add_systems(Startup, setup_entities)
-            .add_systems(Update, move_agents);
+            .add_systems(
+                Update,
+                (
+                    move_agents,
+                    visualize_agent::<PursuerAgent>(Color::RED),
+                    visualize_agent::<PlayerAgent>(Color::GREEN),
+                ),
+            );
     }
 }
 
@@ -29,8 +36,8 @@ impl Plugin for GridworldPlayPlugin {
             .add_systems(
                 Update,
                 (
-                    visualize_agent::<PursuerAgent>(Color::RED),
-                    visualize_agent::<PlayerAgent>(Color::GREEN),
+                    // visualize_agent::<PursuerAgent>(Color::RED),
+                    // visualize_agent::<PlayerAgent>(Color::GREEN),
                     set_player_action,
                 ),
             );
