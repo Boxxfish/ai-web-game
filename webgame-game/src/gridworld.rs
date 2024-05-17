@@ -1,4 +1,7 @@
-use bevy::{prelude::*, sprite::Anchor};
+use bevy::{
+    prelude::*,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+};
 use bevy_rapier2d::{
     control::KinematicCharacterController, dynamics::RigidBody, geometry::Collider,
 };
@@ -15,7 +18,7 @@ pub struct GridworldPlugin;
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE))
-            .add_systems(Startup, setup_entities)
+            .add_systems(Startup, (setup_entities, setup_entities_playable))
             .add_systems(
                 Update,
                 (
@@ -32,15 +35,7 @@ pub struct GridworldPlayPlugin;
 
 impl Plugin for GridworldPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_entities_playable)
-            .add_systems(
-                Update,
-                (
-                    // visualize_agent::<PursuerAgent>(Color::RED),
-                    // visualize_agent::<PlayerAgent>(Color::GREEN),
-                    set_player_action,
-                ),
-            );
+        app.add_systems(Update, set_player_action);
     }
 }
 
@@ -160,7 +155,12 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
 pub const GRID_CELL_SIZE: f32 = 25.;
 
 /// Sets up entities for playable mode.
-fn setup_entities_playable(mut commands: Commands, level: Res<LevelLayout>) {
+fn setup_entities_playable(
+    mut commands: Commands,
+    level: Res<LevelLayout>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     commands.spawn(Camera2dBundle {
         transform: Transform::from_translation(Vec3::new(
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
@@ -173,12 +173,9 @@ fn setup_entities_playable(mut commands: Commands, level: Res<LevelLayout>) {
     for y in 0..level.size {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
-                commands.spawn(SpriteBundle {
-                    sprite: Sprite {
-                        color: Color::BLACK,
-                        custom_size: Some(Vec2::ONE * GRID_CELL_SIZE),
-                        ..default()
-                    },
+                commands.spawn(MaterialMesh2dBundle {
+                    mesh: Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
+                    material: materials.add(Color::BLACK),
                     transform: Transform::from_translation(
                         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
                     ),
@@ -194,26 +191,24 @@ fn setup_entities_playable(mut commands: Commands, level: Res<LevelLayout>) {
         GRID_CELL_SIZE * (level.size as f32 - 0.5),
     ];
     let wall_pos_offset = GRID_CELL_SIZE * (level.size as f32 / 2. - 0.5);
-    let anchors = [
-        Anchor::CenterRight,
-        Anchor::CenterLeft,
-        Anchor::TopCenter,
-        Anchor::BottomCenter,
+    let anchors_offset = [
+        Vec2::new(-GRID_CELL_SIZE * level.size as f32, 0.),
+        Vec2::new(GRID_CELL_SIZE * level.size as f32, 0.),
+        Vec2::new(0., -GRID_CELL_SIZE * level.size as f32),
+        Vec2::new(0., GRID_CELL_SIZE * level.size as f32),
     ];
     for i in 0..4 {
         let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((SpriteBundle {
-            sprite: Sprite {
-                color: Color::BLACK,
-                custom_size: Some(Vec2::ONE * GRID_CELL_SIZE * level.size as f32 * 2.),
-                anchor: anchors[i],
-                ..default()
-            },
-            transform: Transform::from_translation(Vec3::new(
-                positions[i / 2],
-                positions[1 - i / 2],
-                0.,
-            )),
+        commands.spawn((MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(
+                GRID_CELL_SIZE * level.size as f32 * 2.,
+                GRID_CELL_SIZE * level.size as f32 * 2.,
+            ))),
+            material: materials.add(Color::BLACK),
+            transform: Transform::from_translation(
+                Vec3::new(positions[i / 2], positions[1 - i / 2], 0.)
+                    + anchors_offset[i].extend(0.),
+            ),
             ..default()
         },));
     }
@@ -222,16 +217,20 @@ fn setup_entities_playable(mut commands: Commands, level: Res<LevelLayout>) {
 /// Adds a visual to newly created agents.
 fn visualize_agent<T: Component>(
     color: Color,
-) -> impl Fn(Commands<'_, '_>, Query<'_, '_, Entity, Added<T>>) {
-    move |mut commands: Commands, agent_query: Query<Entity, Added<T>>| {
+) -> impl Fn(
+    Commands<'_, '_>,
+    Query<'_, '_, Entity, Added<T>>,
+    ResMut<Assets<Mesh>>,
+    ResMut<Assets<ColorMaterial>>,
+) {
+    move |mut commands: Commands,
+          agent_query: Query<Entity, Added<T>>,
+          mut meshes: ResMut<Assets<Mesh>>,
+          mut materials: ResMut<Assets<ColorMaterial>>| {
         for e in agent_query.iter() {
             commands.entity(e).insert((
-                Sprite {
-                    color,
-                    custom_size: Some(Vec2::ONE * GRID_CELL_SIZE * 0.25),
-                    ..default()
-                },
-                Handle::<Image>::default(),
+                Mesh2dHandle(meshes.add(Circle::new(GRID_CELL_SIZE * 0.25))),
+                materials.add(color),
                 Visibility::Visible,
                 InheritedVisibility::default(),
                 ViewVisibility::default(),

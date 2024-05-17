@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 pub mod net;
 pub mod configs;
 pub mod gridworld;

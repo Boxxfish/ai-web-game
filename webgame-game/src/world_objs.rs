@@ -2,7 +2,7 @@ use crate::{
     gridworld::{NextAction, GRID_CELL_SIZE},
     observer::Wall,
 };
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::prelude::*;
 
 /// Plugin for world objects (e.g. doors, noise sources).
@@ -18,9 +18,7 @@ impl Plugin for WorldObjPlugin {
 pub struct WorldObjPlayPlugin;
 
 impl Plugin for WorldObjPlayPlugin {
-    fn build(&self, app: &mut App) {
-        // app.add_systems(Update, visualize_door);
-    }
+    fn build(&self, app: &mut App) {}
 }
 
 /// A door that can be opened and closed.
@@ -63,23 +61,25 @@ fn update_door(
 /// Updates the door visual.
 fn visualize_door(
     mut commands: Commands,
-    mut door_query: Query<(Entity, &Door, Option<&mut Sprite>), Changed<Door>>,
+    mut door_query: Query<(Entity, &Door, Option<&Handle<ColorMaterial>>), Changed<Door>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    for (e, door, sprite) in door_query.iter_mut() {
+    for (e, door, mat_handle) in door_query.iter_mut() {
         if door.open {
-            sprite.unwrap().color.set_a(0.5);
+            materials
+                .get_mut(mat_handle.unwrap())
+                .unwrap()
+                .color
+                .set_a(0.5);
             commands.entity(e).remove::<Wall>();
-        } else if let Some(mut sprite) = sprite {
-            sprite.color.set_a(1.);
+        } else if let Some(mat_handle) = mat_handle {
+            materials.get_mut(mat_handle).unwrap().color.set_a(1.0);
             commands.entity(e).insert(Wall);
         } else {
             commands.entity(e).insert((
-                Sprite {
-                    color: Color::MAROON,
-                    custom_size: Some(Vec2::ONE * GRID_CELL_SIZE),
-                    ..default()
-                },
-                Handle::<Image>::default(),
+                Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
+                materials.add(Color::MAROON),
                 Visibility::Visible,
                 InheritedVisibility::default(),
                 ViewVisibility::default(),
