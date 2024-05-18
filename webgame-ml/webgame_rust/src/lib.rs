@@ -125,7 +125,7 @@ impl GameWrapper {
 
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
-        self.app.update();
+        self.app.run();
         *self = Self::new(self.visualize);
         self.get_state()
     }

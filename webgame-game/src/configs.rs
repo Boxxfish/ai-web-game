@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use bevy::{asset::AssetMetaCheck, prelude::*, time::TimeUpdateStrategy};
+use bevy::{asset::AssetMetaCheck, prelude::*, render::{settings::WgpuSettings, RenderPlugin}, time::TimeUpdateStrategy, winit::WinitPlugin};
 use bevy_rapier2d::prelude::*;
 
 use crate::{
@@ -64,7 +64,16 @@ impl Plugin for LibCfgPlugin {
                     exit_condition: bevy::window::ExitCondition::DontExit,
                     close_when_requested: false,
                 })
-                .set(ImagePlugin::default_nearest()),
+                .set(ImagePlugin::default_nearest())
+                .set(RenderPlugin {
+                    render_creation: WgpuSettings {
+                        backends: None,
+                        ..default()
+                    }
+                    .into(),
+                    ..default()
+                })
+                .disable::<WinitPlugin>(),
             CoreGamePlugin,
         ))
         // Use constant timestep

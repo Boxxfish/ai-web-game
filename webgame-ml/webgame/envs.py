@@ -128,11 +128,9 @@ def agent_state_to_obs(
 
 
 if __name__ == "__main__":
-    # Initialize environment, with Revy logging set to True.
     env = GameEnv(visualize=True)
     env.reset()
 
-    # For 1000 timesteps, have both agents act randomly.
     for _ in tqdm(range(1000)):
         env.step(
             {
