@@ -1,5 +1,5 @@
 use crate::{
-    gridworld::{NextAction, GRID_CELL_SIZE},
+    gridworld::{Agent, NextAction, GRID_CELL_SIZE},
     observer::Wall,
 };
 use bevy::{prelude::*, sprite::Mesh2dHandle};
@@ -10,7 +10,7 @@ pub struct WorldObjPlugin;
 
 impl Plugin for WorldObjPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (update_door, visualize_door));
+        app.add_systems(Update, (update_door, visualize_door, update_noise_src, visualize_noise_src));
     }
 }
 
@@ -85,6 +85,44 @@ fn visualize_door(
                 ViewVisibility::default(),
             ));
             commands.entity(e).insert(Wall);
+        }
+    }
+}
+
+/// A source of noise that alerts observers within a radius.
+#[derive(Component)]
+pub struct NoiseSource {
+    /// How far away to broadcast the noise.
+    pub noise_radius: f32,
+    /// How close an agent has to be to activate the noise source.
+    pub active_radius: f32,
+    pub activated_by: Option<Entity>,
+}
+
+/// Broadcasts that an agent touched the noise source.
+fn update_noise_src(
+    agent_query: Query<(Entity, &GlobalTransform), With<Agent>>,
+    mut noise_query: Query<(&GlobalTransform, &mut NoiseSource)>,
+) {
+    for (agent_e, agent_xform) in agent_query.iter() {
+        let agent_pos = agent_xform.translation().xy();
+        for (obj_xform, mut noise) in noise_query.iter_mut() {
+            let obj_pos = obj_xform.translation().xy();
+            let dist_sq = (obj_pos - agent_pos).length_squared();
+            if dist_sq <= noise.active_radius.powi(2) {
+                noise.activated_by = Some(agent_e);
+            }
+        }
+    }
+}
+
+/// Visualizes a noise source.
+fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform, &NoiseSource)>) {
+    for (obj_xform, noise) in noise_query.iter() {
+        let obj_pos = obj_xform.translation().xy();
+        gizmos.circle_2d(obj_pos, noise.active_radius, Color::BLUE);
+        if noise.activated_by.is_some() {
+            gizmos.circle_2d(obj_pos, noise.noise_radius, Color::ORANGE);
         }
     }
 }
