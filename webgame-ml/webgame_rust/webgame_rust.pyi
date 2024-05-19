@@ -7,6 +7,13 @@ class ObservableObj:
     pos: PyVec2
     obj_type: str
 
+class NoiseSourceObj:
+    """
+    Describes a noise source.
+    """
+    pos: PyVec2
+    active_radius: float
+
 class PyVec2:
     """
     Represents a 2D vector.
@@ -21,6 +28,7 @@ class AgentState:
     pos: PyVec2
     dir: PyVec2
     observing: list[int]
+    listening: list[int]
 
 class GameState:
     """
@@ -31,6 +39,7 @@ class GameState:
     walls: list[bool]
     level_size: int
     objects: Mapping[int, ObservableObj]
+    noise_sources: Mapping[int, NoiseSourceObj]
 
 class GameWrapper:
     def __init__(self, visualize: bool) -> None:

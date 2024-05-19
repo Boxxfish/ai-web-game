@@ -7,6 +7,7 @@ use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent},
     observer::{Observable, Observer},
+    world_objs::NoiseSource,
 };
 
 /// Describes an observable object.
@@ -17,6 +18,16 @@ pub struct ObservableObject {
     pub pos: PyVec2,
     #[pyo3(get)]
     pub obj_type: String,
+}
+
+/// Describes a noise source in the environment.
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct NoiseSourceObject {
+    #[pyo3(get)]
+    pub pos: PyVec2,
+    #[pyo3(get)]
+    pub active_radius: f32,
 }
 
 /// Represents a 2D vector.
@@ -48,6 +59,8 @@ pub struct AgentState {
     pub dir: PyVec2,
     #[pyo3(get)]
     pub observing: Vec<u64>,
+    #[pyo3(get)]
+    pub listening: Vec<u64>,
 }
 
 /// Contains the state of the game for a single frame.
@@ -64,6 +77,8 @@ pub struct GameState {
     pub level_size: usize,
     #[pyo3(get)]
     pub objects: HashMap<u64, ObservableObject>,
+    #[pyo3(get)]
+    pub noise_sources: HashMap<u64, NoiseSourceObject>,
 }
 
 /// Indicates the kind of actions an agent can take.
@@ -152,13 +167,27 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
 
 /// Queries the world for an agent with the provided component and returns an `AgentState`.
 fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
-    let (agent, xform, observer) = world
-        .query_filtered::<(&Agent, &Transform, &Observer), With<T>>()
+    let (agent, &xform, observer) = world
+        .query_filtered::<(&Agent, &GlobalTransform, &Observer), With<T>>()
         .single(world);
+    let pos = xform.translation().xy().into();
+    let dir = agent.dir.into();
+    let observing = observer.observing.iter().map(|e| e.to_bits()).collect();
+
+    let listening = world
+        .query::<(Entity, &GlobalTransform, &NoiseSource)>()
+        .iter(world)
+        .filter(|(_, noise_xform, noise_src)| {
+            (xform.translation().xy() - noise_xform.translation().xy()).length_squared()
+                <= noise_src.noise_radius
+        })
+        .map(|(e, _, _)| e.to_bits())
+        .collect();
     AgentState {
-        pos: xform.translation.xy().into(),
-        dir: agent.dir.into(),
-        observing: observer.observing.iter().map(|e| e.to_bits()).collect(),
+        pos,
+        dir,
+        observing,
+        listening,
     }
 }
 
@@ -167,20 +196,36 @@ impl GameWrapper {
         let world = &mut self.app.world;
         let player = get_agent_state::<PlayerAgent>(world);
         let pursuer = get_agent_state::<PursuerAgent>(world);
+
+        // Record all observable items
         let mut observables =
-            world.query_filtered::<(Entity, &Transform, Option<&Agent>), With<Observable>>();
+            world.query_filtered::<(Entity, &GlobalTransform, Option<&Agent>), With<Observable>>();
         let mut objects = HashMap::new();
         for (e, xform, agent) in observables.iter(world) {
             if agent.is_some() {
                 objects.insert(
                     e.to_bits(),
                     ObservableObject {
-                        pos: xform.translation.xy().into(),
+                        pos: xform.translation().xy().into(),
                         obj_type: "agent".into(),
                     },
                 );
             }
         }
+
+        // Record all noise sources
+        let mut noise_srcs = world.query::<(Entity, &GlobalTransform, &NoiseSource)>();
+        let mut noise_sources = HashMap::new();
+        for (e, xform, noise_src) in noise_srcs.iter(world) {
+            noise_sources.insert(
+                e.to_bits(),
+                NoiseSourceObject {
+                    pos: xform.translation().xy().into(),
+                    active_radius: noise_src.active_radius,
+                },
+            );
+        }
+
         let level = world.get_resource::<LevelLayout>().unwrap();
         GameState {
             player,
@@ -188,6 +233,7 @@ impl GameWrapper {
             walls: level.walls.clone(),
             level_size: level.size,
             objects,
+            noise_sources,
         }
     }
 }

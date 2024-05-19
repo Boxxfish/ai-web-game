@@ -10,7 +10,15 @@ pub struct WorldObjPlugin;
 
 impl Plugin for WorldObjPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (update_door, visualize_door, update_noise_src, visualize_noise_src));
+        app.add_systems(
+            Update,
+            (
+                update_door,
+                visualize_door,
+                update_noise_src,
+                visualize_noise_src,
+            ),
+        );
     }
 }
 
@@ -104,9 +112,10 @@ fn update_noise_src(
     agent_query: Query<(Entity, &GlobalTransform), With<Agent>>,
     mut noise_query: Query<(&GlobalTransform, &mut NoiseSource)>,
 ) {
-    for (agent_e, agent_xform) in agent_query.iter() {
-        let agent_pos = agent_xform.translation().xy();
-        for (obj_xform, mut noise) in noise_query.iter_mut() {
+    for (obj_xform, mut noise) in noise_query.iter_mut() {
+        noise.activated_by = None;
+        for (agent_e, agent_xform) in agent_query.iter() {
+            let agent_pos = agent_xform.translation().xy();
             let obj_pos = obj_xform.translation().xy();
             let dist_sq = (obj_pos - agent_pos).length_squared();
             if dist_sq <= noise.active_radius.powi(2) {
