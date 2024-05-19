@@ -10,7 +10,7 @@ import functools
 # The maximum number of object vectors supported by the environment.
 MAX_OBJS = 16
 # The dimension of each object vector.
-OBJ_DIM = 2
+OBJ_DIM = 5
 
 # The world space size of a grid cell
 CELL_SIZE = 25
@@ -116,11 +116,20 @@ def agent_state_to_obs(
     """
     obs_vecs = np.zeros([MAX_OBJS, OBJ_DIM], dtype=float)
     for i, e in enumerate(agent_state.observing):
-        obj = game_state.objects[e]
+        obs_obj = game_state.objects[e]
         obj_features = np.zeros([OBJ_DIM])
-        obj_features[0] = obj.pos.x / (game_state.level_size * CELL_SIZE)
-        obj_features[1] = obj.pos.y / (game_state.level_size * CELL_SIZE)
+        obj_features[0] = obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
+        obj_features[1] = obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
+        obj_features[2] = 1
         obs_vecs[i] = obj_features
+    for i, e in enumerate(agent_state.listening):
+        obj_noise = game_state.noise_sources[e]
+        obj_features = np.zeros([OBJ_DIM])
+        obj_features[0] = obj_noise.pos.x / (game_state.level_size * CELL_SIZE)
+        obj_features[1] = obj_noise.pos.y / (game_state.level_size * CELL_SIZE)
+        obj_features[3] = 1
+        obj_features[4] = obj_noise.active_radius
+        obs_vecs[i + len(agent_state.observing)] = obj_features
     walls = np.array(game_state.walls, dtype=float).reshape(
         (game_state.level_size, game_state.level_size)
     )
@@ -128,7 +137,7 @@ def agent_state_to_obs(
 
 
 if __name__ == "__main__":
-    env = GameEnv(visualize=True)
+    env = GameEnv(visualize=False)
     env.reset()
 
     for _ in tqdm(range(1000)):
