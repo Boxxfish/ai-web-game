@@ -21,6 +21,15 @@ class PyVec2:
     x: float
     y: float
 
+class VMData:
+    """
+    Data on visual markers.
+    """
+    last_seen: bool
+    last_seen_elapsed: Optional[bool]
+    last_state: bool
+    state_changed: bool
+
 class AgentState:
     """
     Contains the state of an agent for a single frame.
@@ -29,6 +38,7 @@ class AgentState:
     dir: PyVec2
     observing: list[int]
     listening: list[int]
+    vm_data: Mapping[int, VMData]
 
 class GameState:
     """

@@ -10,7 +10,7 @@ import functools
 # The maximum number of object vectors supported by the environment.
 MAX_OBJS = 16
 # The dimension of each object vector.
-OBJ_DIM = 5
+OBJ_DIM = 8
 
 # The world space size of a grid cell
 CELL_SIZE = 25
@@ -121,6 +121,11 @@ def agent_state_to_obs(
         obj_features[0] = obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
         obj_features[1] = obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
         obj_features[2] = 1
+        if e in agent_state.vm_data:
+            vm_data = agent_state.vm_data[e]
+            obj_features[5] = 1
+            obj_features[6] = vm_data.last_seen / 10.0
+            obj_features[7] = vm_data.state_changed
         obs_vecs[i] = obj_features
     for i, e in enumerate(agent_state.listening):
         obj_noise = game_state.noise_sources[e]

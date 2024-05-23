@@ -49,6 +49,20 @@ impl From<Vec2> for PyVec2 {
     }
 }
 
+/// Stores data for visual markers.
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct VMData {
+    #[pyo3(get)]
+    pub last_seen: f32,
+    #[pyo3(get)]
+    pub last_seen_elapsed: Option<f32>,
+    #[pyo3(get)]
+    pub last_state: bool,
+    #[pyo3(get)]
+    pub state_changed: bool,
+}
+
 /// Contains the state of an agent for a single frame.
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -61,6 +75,8 @@ pub struct AgentState {
     pub observing: Vec<u64>,
     #[pyo3(get)]
     pub listening: Vec<u64>,
+    #[pyo3(get)]
+    pub vm_data: HashMap<u64, VMData>,
 }
 
 /// Contains the state of the game for a single frame.
@@ -173,6 +189,21 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
     let pos = xform.translation().xy().into();
     let dir = agent.dir.into();
     let observing = observer.observing.iter().map(|e| e.to_bits()).collect();
+    let vm_data = observer
+        .seen_markers
+        .iter()
+        .map(|(e, vm_data)| {
+            (
+                e.to_bits(),
+                VMData {
+                    last_seen: vm_data.last_seen,
+                    last_state: vm_data.last_state,
+                    state_changed: vm_data.state_changed,
+                    last_seen_elapsed: vm_data.last_seen_elapsed,
+                },
+            )
+        })
+        .collect();
 
     let listening = world
         .query::<(Entity, &GlobalTransform, &NoiseSource)>()
@@ -183,11 +214,13 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
         })
         .map(|(e, _, _)| e.to_bits())
         .collect();
+
     AgentState {
         pos,
         dir,
         observing,
         listening,
+        vm_data,
     }
 }
 
@@ -208,6 +241,15 @@ impl GameWrapper {
                     ObservableObject {
                         pos: xform.translation().xy().into(),
                         obj_type: "agent".into(),
+                    },
+                );
+            }
+            else {
+                objects.insert(
+                    e.to_bits(),
+                    ObservableObject {
+                        pos: xform.translation().xy().into(),
+                        obj_type: "visual".into(),
                     },
                 );
             }
