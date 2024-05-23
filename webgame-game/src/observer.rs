@@ -1,15 +1,17 @@
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
-use crate::gridworld::Agent;
+use crate::{gridworld::Agent, world_objs::VisualMarker};
 
 /// Plugins for determining what agents can see.
 pub struct ObserverPlugin;
 
 impl Plugin for ObserverPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_observers);
+        app.add_systems(Update, (update_observers, update_vm_data));
     }
 }
 
@@ -22,11 +24,25 @@ impl Plugin for ObserverPlayPlugin {
     }
 }
 
+/// Stores visual marker data for an observer
+pub struct VMSeenData {
+    /// When it was last seen (time since startup).
+    pub last_seen: f32,
+    /// When it was last seen (elapsed, only exists when `last_state` is true)
+    pub last_seen_elapsed: Option<f32>,
+    /// The state when this was last seen.
+    pub last_state: bool,
+    /// Whether the state of this has changed since it was last seen.
+    pub state_changed: bool,
+}
+
 /// Indicates that this entity can observe observable entities.
 #[derive(Default, Component)]
 pub struct Observer {
     /// Entities the observer can see.
     pub observing: Vec<Entity>,
+    /// Stores data on visual markers that it's seen.
+    pub seen_markers: HashMap<Entity, VMSeenData>,
     /// Stores a list of triangles that make up the observer's field of vision.
     pub vis_mesh: Vec<[Vec2; 3]>,
 }
@@ -154,6 +170,50 @@ fn update_observers(
             }
         }
         observer.observing = observing;
+    }
+}
+
+/// Updates observers' visual marker data.
+fn update_vm_data(
+    mut observer_query: Query<&mut Observer>,
+    visual_query: Query<(Entity, &VisualMarker)>,
+    time: Res<Time>,
+) {
+    for mut observer in observer_query.iter_mut() {
+        for (v_e, v_marker) in visual_query.iter() {
+            if observer.observing.contains(&v_e) {
+                if let Some(vm_data) = observer.seen_markers.get_mut(&v_e) {
+                    vm_data.last_seen_elapsed =
+                        Some(time.elapsed_seconds_wrapped() - vm_data.last_seen);
+                    vm_data.last_seen = time.elapsed_seconds_wrapped();
+                    vm_data.state_changed = vm_data.last_state != v_marker.state;
+                    vm_data.last_state = v_marker.state;
+                } else {
+                    observer.seen_markers.insert(
+                        v_e,
+                        VMSeenData {
+                            last_seen: time.elapsed_seconds_wrapped(),
+                            last_state: v_marker.state,
+                            state_changed: false,
+                            last_seen_elapsed: Some(0.),
+                        },
+                    );
+                }
+            } else if let Some(vm_data) = observer.seen_markers.get_mut(&v_e) {
+                vm_data.state_changed = false;
+                vm_data.last_seen_elapsed = None;
+            } else {
+                observer.seen_markers.insert(
+                    v_e,
+                    VMSeenData {
+                        last_seen: time.elapsed_seconds_wrapped(),
+                        last_state: true,
+                        state_changed: false,
+                        last_seen_elapsed: None,
+                    },
+                );
+            }
+        }
     }
 }
 
