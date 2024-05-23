@@ -193,7 +193,7 @@ fn update_vm_data(mut observer_query: Query<&mut Observer>, visual_query: Query<
                 else {
                     observer.seen_markers.insert(v_e, VMSeenData {
                         last_seen: 0.,
-                        last_state: false,
+                        last_state: true,
                     });
                 }
             }

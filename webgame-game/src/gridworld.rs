@@ -9,7 +9,7 @@ use rand::{seq::IteratorRandom, Rng};
 
 use crate::{
     observer::{DebugObserver, Observable, Observer, Wall},
-    world_objs::{Door, NoiseSource},
+    world_objs::{Door, NoiseSource, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -151,8 +151,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         ));
     }
 
-    // Add noise sources
-    for _ in 0..rng.gen_range(1..5) {
+    // Add noise sources and visual markers
+    for _ in 0..rng.gen_range((DEFAULT_LEVEL_SIZE / 2)..DEFAULT_LEVEL_SIZE) {
         let tile_idx = level
             .walls
             .iter()
@@ -165,14 +165,24 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         let x = tile_idx % level.size;
         let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
             + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
-        commands.spawn((
-            NoiseSource {
-                noise_radius: GRID_CELL_SIZE * 3.,
-                active_radius: GRID_CELL_SIZE * 1.5,
-                activated_by: None,
-            },
-            TransformBundle::from_transform(Transform::from_translation(pos)),
-        ));
+        let xform_bundle = TransformBundle::from_transform(Transform::from_translation(pos));
+        if rng.gen_ratio(1, 2) {
+            commands.spawn((
+                NoiseSource {
+                    noise_radius: GRID_CELL_SIZE * 3.,
+                    active_radius: GRID_CELL_SIZE * 1.5,
+                    activated_by: None,
+                },
+                xform_bundle,
+            ));
+        }
+        else {
+            commands.spawn((
+                VisualMarker::default(),
+                Observable,
+                xform_bundle,
+            ));
+        }
     }
 }
 
