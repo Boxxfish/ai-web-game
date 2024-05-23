@@ -2,14 +2,20 @@
 
 use std::time::Duration;
 
-use bevy::{asset::AssetMetaCheck, prelude::*, render::{settings::WgpuSettings, RenderPlugin}, time::TimeUpdateStrategy, winit::WinitPlugin};
+use bevy::{
+    asset::AssetMetaCheck,
+    prelude::*,
+    render::{settings::WgpuSettings, RenderPlugin},
+    time::TimeUpdateStrategy,
+    winit::WinitPlugin,
+};
 use bevy_rapier2d::prelude::*;
 
 use crate::{
     gridworld::{GridworldPlayPlugin, GridworldPlugin},
     net::NetPlugin,
     observer::{ObserverPlayPlugin, ObserverPlugin},
-    world_objs::{WorldObjPlayPlugin, WorldObjPlugin},
+    world_objs::WorldObjPlugin,
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -37,7 +43,7 @@ impl Plugin for PlayablePlugin {
                 ..default()
             }))
             .add_plugins(RapierDebugRenderPlugin::default())
-            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin, WorldObjPlayPlugin));
+            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin));
     }
 }
 
