@@ -59,7 +59,7 @@ impl Plugin for ReleaseCfgPlugin {
 /// The configuration for library builds (e.g. for machine learning).
 pub struct LibCfgPlugin;
 
-const FIXED_TS: f32 = 0.02;
+const FIXED_TS: f32 = 0.5;
 
 impl Plugin for LibCfgPlugin {
     fn build(&self, app: &mut App) {

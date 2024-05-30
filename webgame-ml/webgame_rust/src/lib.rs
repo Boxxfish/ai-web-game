@@ -231,20 +231,31 @@ impl GameWrapper {
         let pursuer = get_agent_state::<PursuerAgent>(world);
 
         // Record all observable items
-        let mut observables =
-            world.query_filtered::<(Entity, &GlobalTransform, Option<&Agent>), With<Observable>>();
+        let mut observables = world.query_filtered::<(
+            Entity,
+            &GlobalTransform,
+            Option<&PlayerAgent>,
+            Option<&PursuerAgent>,
+        ), With<Observable>>();
         let mut objects = HashMap::new();
-        for (e, xform, agent) in observables.iter(world) {
-            if agent.is_some() {
+        for (e, xform, player, pursuer) in observables.iter(world) {
+            if player.is_some() {
                 objects.insert(
                     e.to_bits(),
                     ObservableObject {
                         pos: xform.translation().xy().into(),
-                        obj_type: "agent".into(),
+                        obj_type: "player".into(),
                     },
                 );
-            }
-            else {
+            } else if pursuer.is_some() {
+                objects.insert(
+                    e.to_bits(),
+                    ObservableObject {
+                        pos: xform.translation().xy().into(),
+                        obj_type: "pursuer".into(),
+                    },
+                );
+            } else {
                 objects.insert(
                     e.to_bits(),
                     ObservableObject {
