@@ -93,9 +93,13 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         Collider::ball(GRID_CELL_SIZE * 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(Vec3::new(20., 0., 0.))),
+        TransformBundle::from_transform(Transform::from_translation(
+            Vec3::new(20., 0., 0.)
+                + Vec3::new(1., 1., 0.) * level.size as f32 * GRID_CELL_SIZE / 2.0,
+        )),
         Observer::default(),
         Observable,
+        DebugObserver,
     ));
     commands.spawn((
         PlayerAgent,
@@ -104,10 +108,12 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         Collider::ball(GRID_CELL_SIZE * 0.25),
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(Vec3::new(40., 30., 0.))),
+        TransformBundle::from_transform(Transform::from_translation(
+            Vec3::new(40., 30., 0.)
+                + Vec3::new(1., 1., 0.) * level.size as f32 * GRID_CELL_SIZE / 2.0,
+        )),
         Observer::default(),
         Observable,
-        DebugObserver,
     ));
 
     // Set up walls and doors
@@ -175,13 +181,8 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                 },
                 xform_bundle,
             ));
-        }
-        else {
-            commands.spawn((
-                VisualMarker::default(),
-                Observable,
-                xform_bundle,
-            ));
+        } else {
+            commands.spawn((VisualMarker::default(), Observable, xform_bundle));
         }
     }
 }
@@ -311,7 +312,7 @@ fn set_player_action(
 }
 
 /// Moves agents around.
-fn move_agents(
+pub fn move_agents(
     mut agent_query: Query<(&mut Agent, &mut KinematicCharacterController, &NextAction)>,
     time: Res<Time>,
 ) {

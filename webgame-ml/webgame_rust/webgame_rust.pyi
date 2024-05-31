@@ -39,6 +39,7 @@ class AgentState:
     observing: list[int]
     listening: list[int]
     vm_data: Mapping[int, VMData]
+    visible_cells: list[bool]
 
 class GameState:
     """

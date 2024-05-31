@@ -36,7 +36,6 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.last_obs: Optional[Mapping[str, tuple[np.ndarray, np.ndarray]]] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]
-        self.level_size = 8
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray]],
