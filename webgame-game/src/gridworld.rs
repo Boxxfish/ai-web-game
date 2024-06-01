@@ -129,13 +129,13 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                     )),
                 ));
             } else if rng.gen_bool(DOOR_PROB) {
-                commands.spawn((
-                    Door::default(),
-                    Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
-                    TransformBundle::from_transform(Transform::from_translation(
-                        Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
-                    )),
-                ));
+                // commands.spawn((
+                //     Door::default(),
+                //     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
+                //     TransformBundle::from_transform(Transform::from_translation(
+                //         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
+                //     )),
+                // ));
             }
         }
     }

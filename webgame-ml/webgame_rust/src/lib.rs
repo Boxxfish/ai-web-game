@@ -130,24 +130,31 @@ impl<'source> FromPyObject<'source> for AgentAction {
 pub struct GameWrapper {
     pub app: App,
     pub visualize: bool,
+    pub recording_id: Option<String>,
 }
 
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new(visualize: bool) -> Self {
+    pub fn new(visualize: bool, recording_id: Option<String>) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
 
         if visualize {
-            app.add_plugins(VisualizerPlugin);
+            app.add_plugins(VisualizerPlugin {
+                recording_id: recording_id.clone(),
+            });
         }
 
         app.finish();
         app.cleanup();
         app.update();
 
-        Self { app, visualize }
+        Self {
+            app,
+            visualize,
+            recording_id,
+        }
     }
 
     pub fn step(&mut self, action_player: AgentAction, action_pursuer: AgentAction) -> GameState {
@@ -162,7 +169,7 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
         self.app.run();
-        *self = Self::new(self.visualize);
+        *self = Self::new(self.visualize, self.recording_id.clone());
         self.get_state()
     }
 }
@@ -372,7 +379,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(false, None)
     }
 }
 

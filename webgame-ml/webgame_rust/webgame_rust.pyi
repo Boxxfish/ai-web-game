@@ -53,7 +53,7 @@ class GameState:
     noise_sources: Mapping[int, NoiseSourceObj]
 
 class GameWrapper:
-    def __init__(self, visualize: bool) -> None:
+    def __init__(self, visualize: bool, recording_id: Optional[str]) -> None:
         """
         Args:
             visualize: If we should log visuals to Rerun.

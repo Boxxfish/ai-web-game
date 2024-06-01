@@ -97,14 +97,18 @@ impl Plugin for LibCfgPlugin {
 }
 
 /// Optional plugin for library builds, adds support for Rerun visuals.
-pub struct VisualizerPlugin;
+pub struct VisualizerPlugin {
+    pub recording_id: Option<String>,
+}
 
 impl Plugin for VisualizerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins({
-            let rec = revy::RecordingStreamBuilder::new("Pursuer")
-                .spawn()
-                .unwrap();
+            let mut rec = revy::RecordingStreamBuilder::new("Pursuer");
+            if let Some(recording_id) = &self.recording_id {
+                rec = rec.recording_id(recording_id);
+            }
+            let rec = rec.spawn().unwrap();
             revy::RerunPlugin { rec }
         });
     }

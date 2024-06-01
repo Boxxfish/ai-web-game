@@ -30,8 +30,8 @@ class GameEnv(pettingzoo.ParallelEnv):
         visualize: If we should log visuals to Rerun.
     """
 
-    def __init__(self, visualize: bool = False):
-        self.game = GameWrapper(visualize)
+    def __init__(self, visualize: bool = False, recording_id: Optional[str] = None):
+        self.game = GameWrapper(visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.last_obs: Optional[Mapping[str, tuple[np.ndarray, np.ndarray]]] = None
         self.possible_agents = ["player", "pursuer"]
