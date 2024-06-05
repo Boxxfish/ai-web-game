@@ -6,7 +6,7 @@ from webgame_rust import AgentState, GameState
 
 
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:
-    return (int(x / cell_size + 0.5), size - int(y / cell_size + 0.5) - 1)
+    return (int(round(x / cell_size)), size - int(round(y / cell_size)) - 1)
 
 
 class BayesFilter:
@@ -52,19 +52,21 @@ class BayesFilter:
         posterior = np.zeros([self.size, self.size])
         for y in range(self.size):
             for x in range(self.size):
-                # TODO: Double check that I've combined different sensors correctly
                 grid_lkhd = 1 - obs_grid[y][x]
                 agent_lkhd = 1.0
                 if player_vis_grid is not None:
                     if player_vis_grid != (x, y):
                         agent_lkhd = 0.0
                 else:
+                    # Cells within vision have 0% chance of agent being there
                     agent_lkhd = 1 - int(
                         agent_state.visible_cells[y * game_state.level_size + x]
                     )
+                    # All other cells are equally probable
+                    agent_lkhd = agent_lkhd * (1.0 / (self.size**2 - sum(agent_state.visible_cells)))
                 lkhd = grid_lkhd * agent_lkhd
                 posterior[y][x] = lkhd * belief[y][x]
-        return posterior / (posterior.sum() + 0.001)
+        return posterior / posterior.sum()
 
 
 if __name__ == "__main__":
@@ -82,7 +84,7 @@ if __name__ == "__main__":
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
     b_filter = BayesFilter(env.game_state.level_size, 25.0)
-    for _ in range(1000):
+    for _ in range(100):
         actions = {}
         for agent in env.agents:
             actions[agent] = action_space.sample()
