@@ -30,13 +30,12 @@ class GameEnv(pettingzoo.ParallelEnv):
         visualize: If we should log visuals to Rerun.
     """
 
-    def __init__(self, visualize: bool = False):
-        self.game = GameWrapper(visualize)
+    def __init__(self, visualize: bool = False, recording_id: Optional[str] = None):
+        self.game = GameWrapper(visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.last_obs: Optional[Mapping[str, tuple[np.ndarray, np.ndarray]]] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]
-        self.level_size = 8
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray]],
@@ -83,7 +82,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         return (obs, infos)
 
     @functools.lru_cache(maxsize=None)
-    def action_space(self, _: str) -> gym.Space:
+    def action_space(self, _agent: str) -> gym.Space:
         return gym.spaces.Discrete(10)
 
     @functools.lru_cache(maxsize=None)

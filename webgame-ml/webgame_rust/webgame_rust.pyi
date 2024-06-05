@@ -39,6 +39,7 @@ class AgentState:
     observing: list[int]
     listening: list[int]
     vm_data: Mapping[int, VMData]
+    visible_cells: list[bool]
 
 class GameState:
     """
@@ -52,7 +53,7 @@ class GameState:
     noise_sources: Mapping[int, NoiseSourceObj]
 
 class GameWrapper:
-    def __init__(self, visualize: bool) -> None:
+    def __init__(self, visualize: bool, recording_id: Optional[str]) -> None:
         """
         Args:
             visualize: If we should log visuals to Rerun.

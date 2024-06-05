@@ -1,17 +1,24 @@
 use std::collections::HashMap;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
-use crate::{gridworld::Agent, world_objs::VisualMarker};
+use crate::{gridworld::{move_agents, Agent}, world_objs::VisualMarker};
 
 /// Plugins for determining what agents can see.
 pub struct ObserverPlugin;
 
 impl Plugin for ObserverPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (update_observers, update_vm_data));
+        app.add_systems(
+            Update,
+            (
+                update_observers.after(move_agents),
+                update_vm_data,
+                draw_observer_areas.after(update_observers),
+            ),
+        );
     }
 }
 
@@ -19,9 +26,7 @@ impl Plugin for ObserverPlugin {
 pub struct ObserverPlayPlugin;
 
 impl Plugin for ObserverPlayPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Update, draw_observer_areas);
-    }
+    fn build(&self, _app: &mut App) {}
 }
 
 /// Stores visual marker data for an observer
@@ -222,25 +227,33 @@ fn sign(p1: Vec2, p2: Vec2, p3: Vec2) -> f32 {
     (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
 }
 
-/// Draws parts of the room observers can see.
-#[allow(clippy::type_complexity)]
-fn draw_observer_areas(
-    observer_query: Query<(&Observer, &Transform, &Agent), With<DebugObserver>>,
-    mut gizmos: Gizmos,
-) {
-    for (observer, observer_xform, agent) in observer_query.iter() {
-        // Draw vision cone
-        let fov = 60_f32.to_radians();
-        let start = observer_xform.translation.xy();
-        let cone_l = Mat2::from_angle(-fov / 2.) * agent.dir;
-        let cone_r = Mat2::from_angle(fov / 2.) * agent.dir;
-        gizmos.line_2d(start, start + agent.dir * 10., Color::AQUAMARINE);
-        gizmos.line_2d(start, start + cone_l * 40., Color::YELLOW);
-        gizmos.line_2d(start, start + cone_r * 40., Color::YELLOW);
+/// Marker component for vision cone visual.
+#[derive(Component)]
+struct VisCone;
 
-        // Draw visible areas
+/// Draws visible areas for observers.
+fn draw_observer_areas(
+    observer_query: Query<&Observer, With<DebugObserver>>,
+    vis_cone_query: Query<(Entity, &Mesh2dHandle, &Handle<ColorMaterial>), With<VisCone>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    for (e, mesh, color) in vis_cone_query.iter() {
+        meshes.remove(&mesh.0);
+        materials.remove(color);
+        commands.entity(e).despawn();
+    }
+    for observer in observer_query.iter() {
         for tri in &observer.vis_mesh {
-            gizmos.linestrip_2d([tri[0], tri[1], tri[2], tri[0]], Color::YELLOW.with_a(0.01));
+            commands.spawn((
+                ColorMesh2dBundle {
+                    mesh: Mesh2dHandle(meshes.add(Triangle2d::new(tri[0], tri[1], tri[2]))),
+                    material: materials.add(Color::YELLOW.with_a(0.01)),
+                    ..default()
+                },
+                VisCone,
+            ));
         }
     }
 }

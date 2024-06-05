@@ -5,7 +5,10 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
-    gridworld::{Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent},
+    gridworld::{
+        Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
+        GRID_CELL_SIZE,
+    },
     observer::{Observable, Observer},
     world_objs::NoiseSource,
 };
@@ -77,6 +80,8 @@ pub struct AgentState {
     pub listening: Vec<u64>,
     #[pyo3(get)]
     pub vm_data: HashMap<u64, VMData>,
+    #[pyo3(get)]
+    pub visible_cells: Vec<bool>,
 }
 
 /// Contains the state of the game for a single frame.
@@ -125,24 +130,31 @@ impl<'source> FromPyObject<'source> for AgentAction {
 pub struct GameWrapper {
     pub app: App,
     pub visualize: bool,
+    pub recording_id: Option<String>,
 }
 
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new(visualize: bool) -> Self {
+    pub fn new(visualize: bool, recording_id: Option<String>) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
 
         if visualize {
-            app.add_plugins(VisualizerPlugin);
+            app.add_plugins(VisualizerPlugin {
+                recording_id: recording_id.clone(),
+            });
         }
 
         app.finish();
         app.cleanup();
         app.update();
 
-        Self { app, visualize }
+        Self {
+            app,
+            visualize,
+            recording_id,
+        }
     }
 
     pub fn step(&mut self, action_player: AgentAction, action_pursuer: AgentAction) -> GameState {
@@ -157,7 +169,7 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
         self.app.run();
-        *self = Self::new(self.visualize);
+        *self = Self::new(self.visualize, self.recording_id.clone());
         self.get_state()
     }
 }
@@ -186,6 +198,7 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
     let (agent, &xform, observer) = world
         .query_filtered::<(&Agent, &GlobalTransform, &Observer), With<T>>()
         .single(world);
+    let vis_mesh = observer.vis_mesh.clone();
     let pos = xform.translation().xy().into();
     let dir = agent.dir.into();
     let observing = observer.observing.iter().map(|e| e.to_bits()).collect();
@@ -215,12 +228,85 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
         .map(|(e, _, _)| e.to_bits())
         .collect();
 
+    // Compute intersection of agent visible area with grid
+    let mut visible_cells = vec![false; DEFAULT_LEVEL_SIZE * DEFAULT_LEVEL_SIZE];
+    for tri in &vis_mesh {
+        let mut points = tri.to_vec();
+        points.sort_by(|p1, p2| p1.y.total_cmp(&p2.y)); // 2 is top, 0 is bottom
+        let slope = (points[2].x - points[0].x) / (points[2].y - points[0].y);
+        let mid_point = Vec2::new(
+            points[0].x + slope * (points[1].y - points[0].y),
+            points[1].y,
+        );
+
+        let mut mid_points = [points[1], mid_point];
+        mid_points.sort_by(|p1, p2| p1.x.total_cmp(&p2.x));
+
+        fill_tri_half(
+            &mut visible_cells,
+            mid_points[0],
+            mid_points[1],
+            points[2],
+            true,
+            DEFAULT_LEVEL_SIZE,
+        );
+        fill_tri_half(
+            &mut visible_cells,
+            mid_points[0],
+            mid_points[1],
+            points[0],
+            false,
+            DEFAULT_LEVEL_SIZE,
+        );
+    }
+    let visible_cells = visible_cells
+        .chunks(DEFAULT_LEVEL_SIZE)
+        .rev()
+        .flatten()
+        .copied()
+        .collect();
+
     AgentState {
         pos,
         dir,
         observing,
         listening,
         vm_data,
+        visible_cells,
+    }
+}
+
+/// Fills in half a triangle.
+fn fill_tri_half(
+    visible_cells: &mut [bool],
+    mid1: Vec2,
+    mid2: Vec2,
+    other: Vec2,
+    is_top: bool,
+    size: usize,
+) {
+    let slope1 = (other.x - mid1.x) / (other.y - mid1.y);
+    let slope2 = (other.x - mid2.x) / (other.y - mid2.y);
+    let dy = GRID_CELL_SIZE;
+    let (mut last1, mut last2) = if is_top { (mid1, mid2) } else { (other, other) };
+    for _ in 0..((if is_top {
+        other.y - mid1.y
+    } else {
+        mid1.y - other.y
+    } / dy)
+        .ceil() as u32)
+    {
+        let y = ((last1.y / GRID_CELL_SIZE).round() as usize).clamp(0, size - 1);
+        for x in ((last1.x / GRID_CELL_SIZE).floor() as usize)
+            ..((last2.x / GRID_CELL_SIZE).ceil() as usize)
+        {
+            visible_cells[y * DEFAULT_LEVEL_SIZE + x.clamp(0, size - 1)] = true;
+        }
+
+        last1.x += slope1 * dy;
+        last1.y += dy;
+        last2.x += slope2 * dy;
+        last2.y += dy;
     }
 }
 
@@ -231,20 +317,31 @@ impl GameWrapper {
         let pursuer = get_agent_state::<PursuerAgent>(world);
 
         // Record all observable items
-        let mut observables =
-            world.query_filtered::<(Entity, &GlobalTransform, Option<&Agent>), With<Observable>>();
+        let mut observables = world.query_filtered::<(
+            Entity,
+            &GlobalTransform,
+            Option<&PlayerAgent>,
+            Option<&PursuerAgent>,
+        ), With<Observable>>();
         let mut objects = HashMap::new();
-        for (e, xform, agent) in observables.iter(world) {
-            if agent.is_some() {
+        for (e, xform, player, pursuer) in observables.iter(world) {
+            if player.is_some() {
                 objects.insert(
                     e.to_bits(),
                     ObservableObject {
                         pos: xform.translation().xy().into(),
-                        obj_type: "agent".into(),
+                        obj_type: "player".into(),
                     },
                 );
-            }
-            else {
+            } else if pursuer.is_some() {
+                objects.insert(
+                    e.to_bits(),
+                    ObservableObject {
+                        pos: xform.translation().xy().into(),
+                        obj_type: "pursuer".into(),
+                    },
+                );
+            } else {
                 objects.insert(
                     e.to_bits(),
                     ObservableObject {
@@ -282,7 +379,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(false, None)
     }
 }
 
