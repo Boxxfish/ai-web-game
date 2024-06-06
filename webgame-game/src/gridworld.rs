@@ -61,6 +61,20 @@ impl LevelLayout {
             size,
         }
     }
+
+    /// Returns a random empty tile index.
+    pub fn get_empty(&self) -> usize {
+        let mut rng = rand::thread_rng();
+        let tile_idx = self
+            .walls
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| !**x)
+            .map(|(x, _)| x)
+            .choose(&mut rng)
+            .unwrap();
+        tile_idx
+    }
 }
 
 /// State used by all agents.
@@ -86,6 +100,7 @@ pub struct PlayerAgent;
 
 /// Sets up all entities in the game.
 fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
+    let pursuer_tile_idx = level.get_empty();
     commands.spawn((
         PursuerAgent,
         Agent::default(),
@@ -94,13 +109,17 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
         TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(20., 0., 0.)
-                + Vec3::new(1., 1., 0.) * level.size as f32 * GRID_CELL_SIZE / 2.0,
+            Vec3::new(
+                (pursuer_tile_idx % level.size) as f32,
+                (pursuer_tile_idx / level.size) as f32,
+                0.,
+            ) * GRID_CELL_SIZE,
         )),
         Observer::default(),
         Observable,
         DebugObserver,
     ));
+    let player_tile_idx = level.get_empty();
     commands.spawn((
         PlayerAgent,
         Agent::default(),
@@ -109,8 +128,11 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
         RigidBody::KinematicPositionBased,
         KinematicCharacterController::default(),
         TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(40., 30., 0.)
-                + Vec3::new(1., 1., 0.) * level.size as f32 * GRID_CELL_SIZE / 2.0,
+            Vec3::new(
+                (player_tile_idx % level.size) as f32,
+                (player_tile_idx / level.size) as f32,
+                0.,
+            ) * GRID_CELL_SIZE,
         )),
         Observer::default(),
         Observable,
@@ -159,14 +181,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
 
     // Add noise sources and visual markers
     for _ in 0..rng.gen_range((DEFAULT_LEVEL_SIZE / 2)..DEFAULT_LEVEL_SIZE) {
-        let tile_idx = level
-            .walls
-            .iter()
-            .enumerate()
-            .filter(|(_, x)| !**x)
-            .map(|(x, _)| x)
-            .choose(&mut rng)
-            .unwrap();
+        let tile_idx = level.get_empty();
         let y = tile_idx / level.size;
         let x = tile_idx % level.size;
         let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE

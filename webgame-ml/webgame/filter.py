@@ -4,6 +4,8 @@ from scipy import signal  # type: ignore
 
 from webgame_rust import AgentState, GameState
 
+from webgame.envs import CELL_SIZE
+
 
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:
     return (int(round(x / cell_size)), size - int(round(y / cell_size)) - 1)
@@ -70,7 +72,7 @@ class BayesFilter:
 
 
 if __name__ == "__main__":
-    from webgame.envs import GameEnv
+    from webgame.envs import ObjsGameEnv
     import rerun as rr  # type: ignore
     import random
 
@@ -78,12 +80,12 @@ if __name__ == "__main__":
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
 
-    env = GameEnv(visualize=True, recording_id=recording_id)
+    env = ObjsGameEnv(visualize=True, recording_id=recording_id)
     env.reset()
 
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
-    b_filter = BayesFilter(env.game_state.level_size, 25.0)
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE)
     for _ in range(100):
         actions = {}
         for agent in env.agents:
