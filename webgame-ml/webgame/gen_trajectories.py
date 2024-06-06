@@ -3,13 +3,12 @@ Script for generating trajectories for training our filter.
 """
 
 from argparse import ArgumentParser
-import json
 import os
 from pathlib import Path
 import random
 import string
 from typing import *
-import pickle
+import pickle as pkl
 
 import numpy as np
 from tqdm import tqdm
@@ -48,10 +47,10 @@ def main():
     all_seqs = []
     all_tiles = []
     for seq_idx in tqdm(range(args.num_seqs)):
+        obs, infos = env.reset()
         seq = []
         tiles = []
         for seq_step in range(args.seq_len):
-            obs, infos = env.reset()
             actions = {}
             for agent in env.agents:
                 actions[agent] = action_space.sample()
@@ -69,12 +68,12 @@ def main():
 
     out_dir = Path(args.out_dir)
     out_id = "".join(
-        [random.choices(string.ascii_letters + string.digits) for _ in range(8)]
+        [random.choice(string.ascii_letters + string.digits) for _ in range(8)]
     )
     traj_data_all = TrajDataAll(seqs=all_seqs, tiles=all_tiles)
     os.mkdir(out_dir / out_id)
-    with open(out_dir / out_id / "traj_data_all.json", "w") as f:
-        json.dump(traj_data_all.__dict__, f)
+    with open(out_dir / out_id / "traj_data_all.pkl", "wb") as f:
+        pkl.dump(traj_data_all, f)
 
 
 if __name__ == "__main__":
