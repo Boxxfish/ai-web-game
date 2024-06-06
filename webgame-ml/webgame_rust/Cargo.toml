@@ -11,6 +11,27 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = "0.18.3"
 rand = "0.8.5"
-bevy = "0.13.2"
 webgame-game = { path = "../../webgame-game" }
 num_enum = "0.7.2"
+
+[dependencies.bevy]
+version = "0.13.2"
+default-features = false
+features = [
+    "bevy_asset",         # Assets management
+    "bevy_audio",         # Builtin audio
+    "bevy_gilrs",         # Gamepad input support
+    "bevy_scene",         # Scenes management
+    "bevy_winit",         # Window management (cross-platform Winit backend)
+    "bevy_render",        # Rendering framework core
+    "bevy_core_pipeline", # Common rendering abstractions
+    "bevy_gizmos",        # Support drawing debug lines and shapes
+    "bevy_sprite",        # 2D (sprites) rendering
+    "bevy_pbr",           # 3D (physically-based) rendering
+    "bevy_gltf",          # GLTF 3D assets format support
+    "bevy_text",          # Text/font rendering
+    "bevy_ui",            # UI toolkit
+    "animation",          # Animation support
+    "default_font",       # Embed a minimal default font for text/UI
+    "wayland",
+]
