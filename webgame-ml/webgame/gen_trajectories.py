@@ -21,7 +21,7 @@ from webgame.filter import pos_to_grid
 @dataclass
 class TrajDataAll:
     seqs: List[List[np.ndarray]]
-    tiles: List[List[int]]
+    tiles: List[List[Tuple[int, int]]]
 
 
 def process_obs(obs: Tuple[np.ndarray, np.ndarray]) -> np.ndarray:
@@ -35,7 +35,7 @@ def process_obs(obs: Tuple[np.ndarray, np.ndarray]) -> np.ndarray:
     return np.concatenate([scalar_obs, grid_obs], 0)
 
 
-def main():
+def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--seq-len", type=int, default=32)
@@ -57,11 +57,12 @@ def main():
             obs, rewards_, dones_, truncs_, infos = env.step(actions)
             pursuer_obs = obs["pursuer"]
             processed_obs = process_obs(pursuer_obs)
+            assert env.game_state is not None
             player_pos = env.game_state.player.pos
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
             )
-            seq.append(process_obs)
+            seq.append(processed_obs)
             tiles.append(gold_tile)
         all_seqs.append(seq)
         all_tiles.append(tiles)
