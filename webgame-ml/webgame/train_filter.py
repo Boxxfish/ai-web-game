@@ -22,10 +22,10 @@ import wandb
 
 
 class MeasureModel(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self, channels: int, size: int):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(channels, 32, 3, padding="same", dtype=torch.double),
+            nn.Conv2d(channels + 2, 32, 3, padding="same", dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 32, 3, padding="same", dtype=torch.double),
             nn.SiLU(),
@@ -34,20 +34,42 @@ class MeasureModel(nn.Module):
             nn.Conv2d(32, 1, 3, padding="same", dtype=torch.double),
             nn.Sigmoid(),
         )
+        x_channel = torch.tensor([list(range(size))] * size, dtype=torch.double) / size
+        y_channel = x_channel.T
+        self.pos = torch.stack(
+            [x_channel, y_channel]
+        )  # Shape: (2, grid_size, grid_size)
+        self.pos.requires_grad = False
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.net(x).squeeze(1)  # Shape: (batch_size, grid_size, grid_size)
+        x = self.net(
+            torch.concat(
+                [
+                    x,
+                    self.pos.unsqueeze(0)
+                    .tile([x.shape[0], 1, 1, 1])
+                    .to(device=x.device),
+                ],
+                dim=1,
+            )
+        ).squeeze(
+            1
+        )  # Shape: (batch_size, grid_size, grid_size)
         return x
 
+
 def predict(belief: Tensor) -> Tensor:
-    kernel = torch.tensor([[[[0, 1, 0], [1, 1, 1], [0, 1, 0]]]], dtype=belief.dtype, device=belief.device)
+    kernel = torch.tensor(
+        [[[[0, 1, 0], [1, 1, 1], [0, 1, 0]]]], dtype=belief.dtype, device=belief.device
+    )
     kernel = kernel / kernel.sum()
     belief = torch.nn.functional.conv2d(belief.unsqueeze(1), kernel, padding="same")
     return belief / belief.sum()
 
+
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("--traj-dir", type=str, default="./runs/bCoBe4mT")
+    parser.add_argument("--traj-dir", type=str, default="./runs/OpNh34m7")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=0.001)
@@ -60,21 +82,19 @@ def main() -> None:
         "experiment": "bayes",
     }
     wandb_config.update(args.__dict__)
-    wandb.init(
-        project="pursuer",
-        config=wandb_config
-    )
+    wandb.init(project="pursuer", config=wandb_config)
 
     chkpt_path = Path(args.traj_dir) / "checkpoints"
-    os.mkdir(chkpt_path)
+    try:
+        os.mkdir(chkpt_path)
+    except:
+        print("Checkpoints directory already exists, skipping creation...")
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
 
     ds_x = torch.tensor(
-        traj_data_all.seqs,
-        device=device,
-        dtype=torch.double
+        traj_data_all.seqs, device=device, dtype=torch.double
     )  # Shape: (num_seqs, seq_len, channels, grid_size, grid_size)
     num_seqs, seq_len, channels, grid_size = ds_x.shape[:-1]
     ds_y = torch.tensor(
@@ -83,7 +103,7 @@ def main() -> None:
             for tiles in traj_data_all.tiles
         ],
         dtype=torch.long,
-        device=device
+        device=device,
     )  # Shape: (num_seqs, seq_len)
     valid_pct = 0.2
     num_seqs_valid = int(num_seqs * valid_pct)
@@ -94,7 +114,7 @@ def main() -> None:
     valid_y = ds_y[num_seqs_train:]
     del traj_data_all, ds_x, ds_y
     ce = nn.CrossEntropyLoss()
-    model = MeasureModel(channels)
+    model = MeasureModel(channels, grid_size)
     model.to(device=device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -110,12 +130,21 @@ def main() -> None:
             batch_y = train_y[
                 seq_idxs[batch_idx * batch_size : (batch_idx + 1) * batch_size]
             ]
-            priors = torch.ones([batch_size, grid_size**2], dtype=torch.double, device=device) / grid_size**2
+            priors = (
+                torch.ones(
+                    [batch_size, grid_size**2], dtype=torch.double, device=device
+                )
+                / grid_size**2
+            )
             loss = torch.zeros([1], device=device)
             for step in range(seq_len):
-                lkhd = torch.reshape(model(batch_x[:, step, :, :, :]), [batch_size, grid_size**2])
-                new_priors = predict(priors.reshape([batch_size, grid_size, grid_size])).reshape([batch_size, grid_size**2])
-                new_priors = (new_priors * lkhd)
+                lkhd = torch.reshape(
+                    model(batch_x[:, step, :, :, :]), [batch_size, grid_size**2]
+                )
+                new_priors = predict(
+                    priors.reshape([batch_size, grid_size, grid_size])
+                ).reshape([batch_size, grid_size**2])
+                new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
                 loss += ce(lkhd, batch_y[:, step])
@@ -124,24 +153,30 @@ def main() -> None:
             opt.step()
 
             avg_loss += loss.item()
-        
+
         with torch.no_grad():
             avg_valid_loss = 0.0
-            priors = torch.ones([num_seqs_valid, grid_size**2], dtype=torch.double, device=device) / grid_size**2
+            priors = (
+                torch.ones(
+                    [num_seqs_valid, grid_size**2], dtype=torch.double, device=device
+                )
+                / grid_size**2
+            )
             for step in range(seq_len):
-                lkhd = torch.reshape(model(valid_x[:, step, :, :, :]), [num_seqs_valid, grid_size**2])
-                new_priors = predict(priors.reshape([num_seqs_valid, grid_size, grid_size])).reshape([num_seqs_valid, grid_size**2])
-                new_priors = (new_priors * lkhd)
+                lkhd = torch.reshape(
+                    model(valid_x[:, step, :, :, :]), [num_seqs_valid, grid_size**2]
+                )
+                new_priors = predict(
+                    priors.reshape([num_seqs_valid, grid_size, grid_size])
+                ).reshape([num_seqs_valid, grid_size**2])
+                new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
                 avg_valid_loss += ce(lkhd, valid_y[:, step]).item()
 
         avg_loss = avg_loss / batches_per_epoch
 
-        wandb.log({
-            "train_loss": avg_loss,
-            "valid_loss": avg_valid_loss
-        })
+        wandb.log({"train_loss": avg_loss, "valid_loss": avg_valid_loss})
 
         if epoch % args.save_every == 0:
             save_model(model, str(chkpt_path / f"model-{epoch}.safetensors"))

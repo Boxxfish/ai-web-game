@@ -6,7 +6,7 @@ import torch
 from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
-from webgame.common import pos_to_grid, process_obs
+from webgame.common import explore_policy, pos_to_grid, process_obs
 from webgame.envs import CELL_SIZE, VisionGameEnv
 
 from torch import nn
@@ -24,7 +24,7 @@ class BayesFilter:
         size: int,
         cell_size: float,
         update_fn: Callable[
-            [np.ndarray, np.ndarray, GameState, AgentState, int, float], np.ndarray
+            [np.ndarray, GameState, AgentState, int, float], np.ndarray
         ],
     ):
         self.size = size
@@ -39,9 +39,9 @@ class BayesFilter:
         Given an agent's observations, returns the new location probabilities.
         """
         self.belief = self.predict(self.belief)
-        self.belief = self.update_fn(
-            self.belief, obs, game_state, agent_state, self.size, self.cell_size
-        )
+        lkhd = self.update_fn(obs, game_state, agent_state, self.size, self.cell_size)
+        self.belief = lkhd * self.belief
+        self.belief = self.belief / self.belief.sum()
         return self.belief
 
     def predict(self, belief: np.ndarray) -> np.ndarray:
@@ -52,7 +52,6 @@ class BayesFilter:
 
 
 def manual_update(
-    belief: np.ndarray,
     obs: np.ndarray,
     game_state: GameState,
     agent_state: AgentState,
@@ -72,7 +71,7 @@ def manual_update(
     obs_grid = np.array(game_state.walls).reshape(
         [game_state.level_size, game_state.level_size]
     )
-    posterior = np.zeros([size, size])
+    lkhd = np.zeros([size, size])
     for y in range(size):
         for x in range(size):
             grid_lkhd = 1 - obs_grid[y][x]
@@ -89,16 +88,14 @@ def manual_update(
                 agent_lkhd = agent_lkhd * (
                     1.0 / (size**2 - sum(agent_state.visible_cells))
                 )
-            lkhd = grid_lkhd * agent_lkhd
-            posterior[y][x] = lkhd * belief[y][x]
-    return posterior / posterior.sum()
+            lkhd[y][x] = grid_lkhd * agent_lkhd
+    return lkhd
 
 
-def model_update(model: nn.Module) -> (
-    Callable[[np.ndarray, np.ndarray, GameState, AgentState, int, float], np.ndarray]
-):
+def model_update(
+    model: nn.Module,
+) -> Callable[[np.ndarray, GameState, AgentState, int, float], np.ndarray]:
     def model_update_(
-        belief: np.ndarray,
         obs: np.ndarray,
         game_state: GameState,
         agent_state: AgentState,
@@ -107,8 +104,8 @@ def model_update(model: nn.Module) -> (
     ) -> np.ndarray:
         with torch.no_grad():
             lkhd = model(torch.from_numpy(obs).unsqueeze(0)).squeeze(0).numpy()
-            posterior = belief * lkhd
-            return posterior / posterior.sum()
+            return lkhd
+
     return model_update_
 
 
@@ -116,6 +113,11 @@ if __name__ == "__main__":
     from webgame.envs import ObjsGameEnv
     import rerun as rr  # type: ignore
     import random
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument("--checkpoint", type=str, default=None)
+    args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
     rr.init(application_id="Pursuer", recording_id=recording_id)
@@ -126,17 +128,28 @@ if __name__ == "__main__":
 
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
-    model = MeasureModel(8)
-    load_model(model, "./runs/bCoBe4mT/checkpoints/model-100.safetensors")
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, model_update(model))
+    if args.checkpoint:
+        model = MeasureModel(8, env.game_state.level_size)
+        load_model(model, args.checkpoint)
+        update_fn = model_update(model)
+    else:
+        update_fn = manual_update
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn)
     for _ in range(100):
         actions = {}
         for agent in env.agents:
-            actions[agent] = action_space.sample()
+            if random.random() < 0.1:
+                action = action_space.sample()
+            else:
+                action = explore_policy(env.game_state, agent == "pursuer")
+            actions[agent] = action
         obs = process_obs(env.step(actions)[0]["pursuer"])
+        input()
 
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
+        lkhd = update_fn(obs, game_state, agent_state, game_state.level_size, CELL_SIZE)
         probs = b_filter.localize(obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
+        rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)

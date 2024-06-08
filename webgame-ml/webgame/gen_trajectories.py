@@ -14,7 +14,7 @@ import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
 
-from webgame.common import process_obs, pos_to_grid
+from webgame.common import explore_policy, process_obs, pos_to_grid
 from webgame.envs import CELL_SIZE, VisionGameEnv
 
 
@@ -36,16 +36,20 @@ def main() -> None:
     all_tiles = []
     for seq_idx in tqdm(range(args.num_seqs)):
         obs, infos = env.reset()
+        assert env.game_state is not None
         seq = []
         tiles = []
         for seq_step in range(args.seq_len):
             actions = {}
             for agent in env.agents:
-                actions[agent] = action_space.sample()
+                if random.random() < 0.1:
+                    action = action_space.sample()
+                else:
+                    action = explore_policy(env.game_state, agent == "pursuer")
+                actions[agent] = action
             obs, rewards_, dones_, truncs_, infos = env.step(actions)
             pursuer_obs = obs["pursuer"]
             processed_obs = process_obs(pursuer_obs)
-            assert env.game_state is not None
             player_pos = env.game_state.player.pos
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
