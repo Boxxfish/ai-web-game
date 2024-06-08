@@ -14,26 +14,14 @@ import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
 
+from webgame.common import process_obs, pos_to_grid
 from webgame.envs import CELL_SIZE, VisionGameEnv
-from webgame.filter import pos_to_grid
 
 
 @dataclass
 class TrajDataAll:
     seqs: List[List[np.ndarray]]
     tiles: List[List[Tuple[int, int]]]
-
-
-def process_obs(obs: Tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-    scalar_obs, grid_obs = obs
-    scalar_size = scalar_obs.shape[0]
-    grid_shape = grid_obs.shape
-    scalar_obs = np.tile(
-        scalar_obs[..., np.newaxis, np.newaxis], [1] + list(grid_shape)
-    )
-    grid_obs = grid_obs[np.newaxis, ...]
-    return np.concatenate([scalar_obs, grid_obs], 0)
-
 
 def main() -> None:
     parser = ArgumentParser()

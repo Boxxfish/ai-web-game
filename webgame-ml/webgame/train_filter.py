@@ -17,9 +17,7 @@ from torch import Tensor, nn
 import torch
 from safetensors.torch import save_model
 
-from webgame.envs import CELL_SIZE, VisionGameEnv
-from webgame.filter import pos_to_grid
-from webgame.gen_trajectories import TrajDataAll, process_obs
+from webgame.gen_trajectories import TrajDataAll
 import wandb
 
 
@@ -34,6 +32,7 @@ class MeasureModel(nn.Module):
             nn.Conv2d(32, 32, 3, padding="same", dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 1, 3, padding="same", dtype=torch.double),
+            nn.Sigmoid(),
         )
 
     def forward(self, x: Tensor) -> Tensor:
