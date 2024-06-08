@@ -179,16 +179,11 @@ class VisionGameEnv(BaseGameEnv):
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
         
-        other_agent = ["player", "pursuer"][int(is_pursuer)] 
+        other_agent = ["pursuer", "player"][int(is_pursuer)] 
         other_e, other_obs = list(
             filter(lambda t: t[1].obj_type == other_agent, game_state.objects.items())
         )[0]
-        print([(k, v.obj_type) for k, v in game_state.objects.items()])
-        print(other_agent)
-        print(other_e)
-        print(agent_state.observing)
         if other_e in agent_state.observing:
-            print("Observing")
             obs_vec[4] = 1
             obs_vec[5] = 0.5 + other_obs.pos.x / (game_state.level_size * CELL_SIZE)
             obs_vec[6] = 0.5 + other_obs.pos.y / (game_state.level_size * CELL_SIZE)

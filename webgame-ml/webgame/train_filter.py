@@ -69,7 +69,7 @@ def predict(belief: Tensor) -> Tensor:
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("--traj-dir", type=str, default="./runs/OpNh34m7")
+    parser.add_argument("--traj-dir", type=str)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=0.001)
