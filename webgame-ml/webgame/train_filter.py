@@ -40,6 +40,11 @@ class MeasureModel(nn.Module):
         x = self.net(x).squeeze(1)  # Shape: (batch_size, grid_size, grid_size)
         return x
 
+def predict(belief: Tensor) -> Tensor:
+    kernel = torch.tensor([[[[0, 1, 0], [1, 1, 1], [0, 1, 0]]]], dtype=belief.dtype, device=belief.device)
+    kernel = kernel / kernel.sum()
+    belief = torch.nn.functional.conv2d(belief.unsqueeze(1), kernel, padding="same")
+    return belief / belief.sum()
 
 def main() -> None:
     parser = ArgumentParser()
@@ -110,7 +115,8 @@ def main() -> None:
             loss = torch.zeros([1], device=device)
             for step in range(seq_len):
                 lkhd = torch.reshape(model(batch_x[:, step, :, :, :]), [batch_size, grid_size**2])
-                new_priors = (priors * lkhd)
+                new_priors = predict(priors.reshape([batch_size, grid_size, grid_size])).reshape([batch_size, grid_size**2])
+                new_priors = (new_priors * lkhd)
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
                 loss += ce(lkhd, batch_y[:, step])
@@ -125,7 +131,8 @@ def main() -> None:
             priors = torch.ones([num_seqs_valid, grid_size**2], dtype=torch.double, device=device) / grid_size**2
             for step in range(seq_len):
                 lkhd = torch.reshape(model(valid_x[:, step, :, :, :]), [num_seqs_valid, grid_size**2])
-                new_priors = (priors * lkhd)
+                new_priors = predict(priors.reshape([num_seqs_valid, grid_size, grid_size])).reshape([num_seqs_valid, grid_size**2])
+                new_priors = (new_priors * lkhd)
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
                 avg_valid_loss += ce(lkhd, valid_y[:, step]).item()
