@@ -144,7 +144,6 @@ if __name__ == "__main__":
                 action = explore_policy(env.game_state, agent == "pursuer")
             actions[agent] = action
         obs = process_obs(env.step(actions)[0]["pursuer"])
-        input()
 
         game_state = env.game_state
         assert game_state is not None
