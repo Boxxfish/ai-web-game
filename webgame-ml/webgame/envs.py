@@ -68,7 +68,7 @@ class BaseGameEnv(pettingzoo.ParallelEnv):
 
     def reset(
         self, *args
-    ) -> tuple[Mapping[str, tuple[np.ndarray, np.ndarray]], dict[str, None]]:
+    ) -> tuple[Mapping[str, tuple[np.ndarray, np.ndarray]], Mapping[str, None]]:
         self.game_state = self.game.reset()
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
@@ -179,7 +179,7 @@ class VisionGameEnv(BaseGameEnv):
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
         
-        other_agent = ["player", "pursuer"][int(is_pursuer)] 
+        other_agent = ["pursuer", "player"][int(is_pursuer)] 
         other_e, other_obs = list(
             filter(lambda t: t[1].obj_type == other_agent, game_state.objects.items())
         )[0]

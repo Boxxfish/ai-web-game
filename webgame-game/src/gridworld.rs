@@ -7,10 +7,7 @@ use bevy_rapier2d::{
 };
 use rand::{seq::IteratorRandom, Rng};
 
-use crate::{
-    observer::{DebugObserver, Observable, Observer, Wall},
-    world_objs::{Door, NoiseSource, VisualMarker},
-};
+use crate::observer::{DebugObserver, Observable, Observer, Wall};
 
 /// Plugin for basic game features, such as moving around and not going through walls.
 pub struct GridworldPlugin;
@@ -147,7 +144,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                     Wall,
                     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
                     TransformBundle::from_transform(Transform::from_translation(
-                        Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
+                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
                     )),
                 ));
             } else if rng.gen_bool(DOOR_PROB) {
@@ -155,7 +152,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                 //     Door::default(),
                 //     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
                 //     TransformBundle::from_transform(Transform::from_translation(
-                //         Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
+                //         Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
                 //     )),
                 // ));
             }
@@ -180,26 +177,26 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     }
 
     // Add noise sources and visual markers
-    for _ in 0..rng.gen_range((DEFAULT_LEVEL_SIZE / 2)..DEFAULT_LEVEL_SIZE) {
-        let tile_idx = level.get_empty();
-        let y = tile_idx / level.size;
-        let x = tile_idx % level.size;
-        let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
-            + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
-        let xform_bundle = TransformBundle::from_transform(Transform::from_translation(pos));
-        if rng.gen_ratio(1, 2) {
-            commands.spawn((
-                NoiseSource {
-                    noise_radius: GRID_CELL_SIZE * 3.,
-                    active_radius: GRID_CELL_SIZE * 1.5,
-                    activated_by: None,
-                },
-                xform_bundle,
-            ));
-        } else {
-            commands.spawn((VisualMarker::default(), Observable, xform_bundle));
-        }
-    }
+    // for _ in 0..rng.gen_range((DEFAULT_LEVEL_SIZE / 2)..DEFAULT_LEVEL_SIZE) {
+    //     let tile_idx = level.get_empty();
+    //     let y = tile_idx / level.size;
+    //     let x = tile_idx % level.size;
+    //     let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
+    //         + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
+    //     let xform_bundle = TransformBundle::from_transform(Transform::from_translation(pos));
+    //     if rng.gen_ratio(1, 2) {
+    //         commands.spawn((
+    //             NoiseSource {
+    //                 noise_radius: GRID_CELL_SIZE * 3.,
+    //                 active_radius: GRID_CELL_SIZE * 1.5,
+    //                 activated_by: None,
+    //             },
+    //             xform_bundle,
+    //         ));
+    //     } else {
+    //         commands.spawn((VisualMarker::default(), Observable, xform_bundle));
+    //     }
+    // }
 }
 
 pub const GRID_CELL_SIZE: f32 = 25.;
@@ -227,7 +224,7 @@ fn setup_entities_playable(
                     mesh: Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
                     material: materials.add(Color::BLACK),
                     transform: Transform::from_translation(
-                        Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE,
+                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
                     ),
                     ..default()
                 });

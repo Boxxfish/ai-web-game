@@ -14,28 +14,16 @@ import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
 
+from webgame.common import explore_policy, process_obs, pos_to_grid
 from webgame.envs import CELL_SIZE, VisionGameEnv
-from webgame.filter import pos_to_grid
 
 
 @dataclass
 class TrajDataAll:
     seqs: List[List[np.ndarray]]
-    tiles: List[List[int]]
+    tiles: List[List[Tuple[int, int]]]
 
-
-def process_obs(obs: Tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-    scalar_obs, grid_obs = obs
-    scalar_size = scalar_obs.shape[0]
-    grid_shape = grid_obs.shape
-    scalar_obs = np.tile(
-        scalar_obs[..., np.newaxis, np.newaxis], [1] + list(grid_shape)
-    )
-    grid_obs = grid_obs[np.newaxis, ...]
-    return np.concatenate([scalar_obs, grid_obs], 0)
-
-
-def main():
+def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--seq-len", type=int, default=32)
@@ -48,12 +36,17 @@ def main():
     all_tiles = []
     for seq_idx in tqdm(range(args.num_seqs)):
         obs, infos = env.reset()
+        assert env.game_state is not None
         seq = []
         tiles = []
         for seq_step in range(args.seq_len):
             actions = {}
             for agent in env.agents:
-                actions[agent] = action_space.sample()
+                if random.random() < 0.1:
+                    action = action_space.sample()
+                else:
+                    action = explore_policy(env.game_state, agent == "pursuer")
+                actions[agent] = action
             obs, rewards_, dones_, truncs_, infos = env.step(actions)
             pursuer_obs = obs["pursuer"]
             processed_obs = process_obs(pursuer_obs)
@@ -61,7 +54,7 @@ def main():
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
             )
-            seq.append(process_obs)
+            seq.append(processed_obs)
             tiles.append(gold_tile)
         all_seqs.append(seq)
         all_tiles.append(tiles)

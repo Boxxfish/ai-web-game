@@ -259,12 +259,6 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
             DEFAULT_LEVEL_SIZE,
         );
     }
-    let visible_cells = visible_cells
-        .chunks(DEFAULT_LEVEL_SIZE)
-        .rev()
-        .flatten()
-        .copied()
-        .collect();
 
     AgentState {
         pos,
