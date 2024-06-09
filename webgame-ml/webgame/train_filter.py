@@ -22,10 +22,13 @@ import wandb
 
 
 class MeasureModel(nn.Module):
-    def __init__(self, channels: int, size: int):
+    def __init__(self, channels: int, size: int, use_pos: bool = False):
         super().__init__()
+        num_channels = channels
+        if use_pos:
+            num_channels += 2
         self.net = nn.Sequential(
-            nn.Conv2d(channels + 2, 32, 3, padding="same", dtype=torch.double),
+            nn.Conv2d(num_channels, 32, 3, padding="same", dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 32, 3, padding="same", dtype=torch.double),
             nn.SiLU(),
@@ -40,10 +43,11 @@ class MeasureModel(nn.Module):
             [x_channel, y_channel]
         )  # Shape: (2, grid_size, grid_size)
         self.pos.requires_grad = False
+        self.use_pos = use_pos
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.net(
-            torch.concat(
+        if self.use_pos:
+            x = torch.concat(
                 [
                     x,
                     self.pos.unsqueeze(0)
@@ -52,9 +56,7 @@ class MeasureModel(nn.Module):
                 ],
                 dim=1,
             )
-        ).squeeze(
-            1
-        )  # Shape: (batch_size, grid_size, grid_size)
+        x = self.net(x).squeeze(1)  # Shape: (batch_size, grid_size, grid_size)
         return x
 
 
@@ -77,18 +79,6 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()
     device = torch.device(args.device)
-
-    wandb_config = {
-        "experiment": "bayes",
-    }
-    wandb_config.update(args.__dict__)
-    wandb.init(project="pursuer", config=wandb_config)
-
-    chkpt_path = Path(args.traj_dir) / "checkpoints"
-    try:
-        os.mkdir(chkpt_path)
-    except:
-        print("Checkpoints directory already exists, skipping creation...")
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
@@ -118,8 +108,23 @@ def main() -> None:
     model.to(device=device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+    wandb_config = {
+        "experiment": "bayes",
+        "train_size": num_seqs_train,
+        "valid_size": num_seqs_valid,
+        "grid_size": grid_size,
+    }
+    wandb_config.update(args.__dict__)
+    wandb.init(project="pursuer", config=wandb_config)
+
+    chkpt_path = Path(args.traj_dir) / "checkpoints"
+    try:
+        os.mkdir(chkpt_path)
+    except:
+        print("Checkpoints directory already exists, skipping creation...")
+
     batch_size = args.batch_size
-    batches_per_epoch = args.epochs // batch_size
+    batches_per_epoch = num_seqs_train // batch_size
     for epoch in tqdm(range(args.epochs)):
         seq_idxs = torch.randperm(num_seqs_train, device=device)
         avg_loss = 0.0
@@ -147,7 +152,7 @@ def main() -> None:
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
-                loss += ce(lkhd, batch_y[:, step])
+                loss += ce(priors, batch_y[:, step])
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -172,7 +177,7 @@ def main() -> None:
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
-                avg_valid_loss += ce(lkhd, valid_y[:, step]).item()
+                avg_valid_loss += ce(priors, valid_y[:, step]).item()
 
         avg_loss = avg_loss / batches_per_epoch
 
