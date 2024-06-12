@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = "0.18.3"
 rand = "0.8.5"
-webgame-game = { path = "../../webgame-game" }
+webgame-game = { path = "../../webgame-game", features = ["revy"] }
 num_enum = "0.7.2"
 
 [dependencies.bevy]

@@ -98,10 +98,12 @@ impl Plugin for LibCfgPlugin {
 }
 
 /// Optional plugin for library builds, adds support for Rerun visuals.
+#[cfg(feature = "revy")]
 pub struct VisualizerPlugin {
     pub recording_id: Option<String>,
 }
 
+#[cfg(feature = "revy")]
 impl Plugin for VisualizerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins({
