@@ -22,7 +22,7 @@ import wandb
 
 
 class MeasureModel(nn.Module):
-    def __init__(self, channels: int, size: int, use_pos: bool):
+    def __init__(self, channels: int, size: int, use_pos: bool = False):
         super().__init__()
         num_channels = channels
         if use_pos:
@@ -129,7 +129,6 @@ def main() -> None:
     }
     wandb_config.update(args.__dict__)
     wandb.init(project="pursuer", config=wandb_config)
-
 
     batch_size = args.batch_size
     batches_per_epoch = num_seqs_train // batch_size
