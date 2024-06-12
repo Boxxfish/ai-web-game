@@ -22,17 +22,20 @@ import wandb
 
 
 class MeasureModel(nn.Module):
-    def __init__(self, channels: int, size: int, use_pos: bool = False):
+    def __init__(self, channels: int, size: int, use_pos: bool):
         super().__init__()
         num_channels = channels
         if use_pos:
             num_channels += 2
         self.net = nn.Sequential(
             nn.Conv2d(num_channels, 32, 3, padding="same", dtype=torch.double),
+            nn.BatchNorm2d(32, dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 32, 3, padding="same", dtype=torch.double),
+            nn.BatchNorm2d(32, dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 32, 3, padding="same", dtype=torch.double),
+            nn.BatchNorm2d(32, dtype=torch.double),
             nn.SiLU(),
             nn.Conv2d(32, 1, 3, padding="same", dtype=torch.double),
             nn.Sigmoid(),
@@ -72,16 +75,26 @@ def predict(belief: Tensor) -> Tensor:
 def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--traj-dir", type=str)
+    parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--save-every", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--use-pos", default=False, action="store_true")
     args = parser.parse_args()
     device = torch.device(args.device)
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
+
+    out_dir = Path(args.out_dir)
+    out_id = "".join(
+        [random.choice(string.ascii_letters + string.digits) for _ in range(8)]
+    )
+    os.mkdir(out_dir / out_id)
+    chkpt_path = out_dir / out_id / "checkpoints"
+    os.mkdir(chkpt_path)
 
     ds_x = torch.tensor(
         traj_data_all.seqs, device=device, dtype=torch.double
@@ -104,7 +117,7 @@ def main() -> None:
     valid_y = ds_y[num_seqs_train:]
     del traj_data_all, ds_x, ds_y
     ce = nn.CrossEntropyLoss()
-    model = MeasureModel(channels, grid_size)
+    model = MeasureModel(channels, grid_size, args.use_pos)
     model.to(device=device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -117,15 +130,11 @@ def main() -> None:
     wandb_config.update(args.__dict__)
     wandb.init(project="pursuer", config=wandb_config)
 
-    chkpt_path = Path(args.traj_dir) / "checkpoints"
-    try:
-        os.mkdir(chkpt_path)
-    except:
-        print("Checkpoints directory already exists, skipping creation...")
 
     batch_size = args.batch_size
     batches_per_epoch = num_seqs_train // batch_size
     for epoch in tqdm(range(args.epochs)):
+        model.train()
         seq_idxs = torch.randperm(num_seqs_train, device=device)
         avg_loss = 0.0
         for batch_idx in range(batches_per_epoch):
@@ -159,6 +168,7 @@ def main() -> None:
 
             avg_loss += loss.item()
 
+        model.eval()
         with torch.no_grad():
             avg_valid_loss = 0.0
             priors = (

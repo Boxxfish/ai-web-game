@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     action_space = env.action_space("pursuer")  # Same for both agents
     if args.checkpoint:
-        model = MeasureModel(8, env.game_state.level_size)
+        model = MeasureModel(8, env.game_state.level_size, True)
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
     else:
