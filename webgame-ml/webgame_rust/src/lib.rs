@@ -59,11 +59,9 @@ pub struct VMData {
     #[pyo3(get)]
     pub last_seen: f32,
     #[pyo3(get)]
-    pub last_seen_elapsed: Option<f32>,
+    pub last_seen_elapsed: f32,
     #[pyo3(get)]
-    pub last_state: bool,
-    #[pyo3(get)]
-    pub state_changed: bool,
+    pub last_pos: PyVec2,
 }
 
 /// Contains the state of an agent for a single frame.
@@ -210,9 +208,8 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
                 e.to_bits(),
                 VMData {
                     last_seen: vm_data.last_seen,
-                    last_state: vm_data.last_state,
-                    state_changed: vm_data.state_changed,
                     last_seen_elapsed: vm_data.last_seen_elapsed,
+                    last_pos: vm_data.last_pos.into(),
                 },
             )
         })

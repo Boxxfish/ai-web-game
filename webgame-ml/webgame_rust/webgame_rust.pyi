@@ -25,10 +25,9 @@ class VMData:
     """
     Data on visual markers.
     """
-    last_seen: bool
-    last_seen_elapsed: Optional[bool]
-    last_state: bool
-    state_changed: bool
+    last_seen: float
+    last_seen_elapsed: float
+    last_pos: PyVec2
 
 class AgentState:
     """

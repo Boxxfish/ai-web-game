@@ -8,7 +8,7 @@ from safetensors.torch import load_model
 from tqdm import tqdm
 
 from webgame.common import explore_policy, pos_to_grid, process_obs
-from webgame.envs import CELL_SIZE, VisionGameEnv
+from webgame.envs import CELL_SIZE, GameEnv
 from webgame.filter import BayesFilter, manual_update, model_update
 from webgame.train_filter import MeasureModel
 import random
@@ -19,11 +19,12 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--use-objs", action="set_true")
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--run-steps", type=int, default=100)
     args = parser.parse_args()
 
-    env = VisionGameEnv()
+    env = GameEnv(use_objs=args.use_objs)
     env.reset()
     assert env.game_state is not None
 
@@ -34,7 +35,9 @@ if __name__ == "__main__":
         update_fn = model_update(model)
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn)
+    b_filter = BayesFilter(
+        env.game_state.level_size, CELL_SIZE, update_fn, use_objs=args.use_objs
+    )
     correct_preds = 0
     for run in tqdm(range(args.num_runs)):
         env.reset()
@@ -52,7 +55,14 @@ if __name__ == "__main__":
             game_state = env.game_state
             assert game_state is not None
             agent_state = game_state.pursuer
-            lkhd = update_fn(obs, game_state, agent_state, game_state.level_size, CELL_SIZE)
+            lkhd = update_fn(
+                obs,
+                args.use_objs,
+                game_state,
+                agent_state,
+                game_state.level_size,
+                CELL_SIZE,
+            )
             probs = b_filter.localize(obs, game_state, agent_state)
             probs_flattened = probs.flatten()
 
@@ -65,5 +75,5 @@ if __name__ == "__main__":
 
             if probs_flattened.argmax() == gold_tile_idx:
                 correct_preds += 1
-    
+
     print("Accuracy:", correct_preds / (args.num_runs * args.run_steps))

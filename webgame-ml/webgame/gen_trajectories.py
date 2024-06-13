@@ -15,8 +15,7 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 from webgame.common import explore_policy, process_obs, pos_to_grid
-from webgame.envs import CELL_SIZE, VisionGameEnv
-
+from webgame.envs import CELL_SIZE, GameEnv
 
 @dataclass
 class TrajDataAll:
@@ -30,7 +29,7 @@ def main() -> None:
     parser.add_argument("--num-seqs", type=int, default=4_000)
     args = parser.parse_args()
 
-    env = VisionGameEnv()
+    env = GameEnv()
     action_space = env.action_space("pursuer")
     all_seqs = []
     all_tiles = []
@@ -49,7 +48,7 @@ def main() -> None:
                 actions[agent] = action
             obs, rewards_, dones_, truncs_, infos = env.step(actions)
             pursuer_obs = obs["pursuer"]
-            processed_obs = process_obs(pursuer_obs)
+            processed_obs = process_obs(pursuer_obs)[0]
             player_pos = env.game_state.player.pos
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
