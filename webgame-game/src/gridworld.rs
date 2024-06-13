@@ -199,7 +199,7 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
                 active_radius: GRID_CELL_SIZE * 1.5,
                 activated_by: None,
             },
-            VisualMarker::default(),
+            VisualMarker,
             Observable,
             TransformBundle::from_transform(Transform::from_translation(pos)),
         ));
