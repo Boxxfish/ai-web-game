@@ -3,7 +3,9 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 use bevy_rapier2d::{
-    control::KinematicCharacterController, dynamics::{Damping, GravityScale, LockedAxes, RigidBody}, geometry::Collider,
+    control::KinematicCharacterController,
+    dynamics::{Damping, GravityScale, LockedAxes, RigidBody},
+    geometry::Collider,
 };
 use rand::{seq::IteratorRandom, Rng};
 
@@ -98,8 +100,17 @@ pub struct PursuerAgent;
 #[derive(Component)]
 pub struct PlayerAgent;
 
+/// Determines the maximum number of items that will be spawned.
+/// If this resource is not found, no items are spawned.
+#[derive(Resource)]
+pub struct MaxItems(pub usize);
+
 /// Sets up all entities in the game.
-fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
+fn setup_entities(
+    mut commands: Commands,
+    level: Res<LevelLayout>,
+    max_items: Option<Res<MaxItems>>,
+) {
     let pursuer_tile_idx = level.get_empty();
     commands.spawn((
         PursuerAgent,
@@ -180,29 +191,31 @@ fn setup_entities(mut commands: Commands, level: Res<LevelLayout>) {
     }
 
     // Add noise sources and visual markers
-    for _ in 0..rng.gen_range((DEFAULT_LEVEL_SIZE / 2)..DEFAULT_LEVEL_SIZE) {
-        let tile_idx = level.get_empty();
-        let y = tile_idx / level.size;
-        let x = tile_idx % level.size;
-        let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
-            + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
-        commands.spawn((
-            RigidBody::Dynamic,
-            Damping {
-                linear_damping: 10.,
-                ..default()
-            },
-            LockedAxes::ROTATION_LOCKED,
-            Collider::cuboid(GRID_CELL_SIZE * 0.4, GRID_CELL_SIZE * 0.4),
-            NoiseSource {
-                noise_radius: GRID_CELL_SIZE * 3.,
-                active_radius: GRID_CELL_SIZE * 1.5,
-                activated_by: None,
-            },
-            VisualMarker,
-            Observable,
-            TransformBundle::from_transform(Transform::from_translation(pos)),
-        ));
+    if let Some(max_items) = max_items {
+        for _ in 0..rng.gen_range(0..max_items.0) {
+            let tile_idx = level.get_empty();
+            let y = tile_idx / level.size;
+            let x = tile_idx % level.size;
+            let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
+                + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
+            commands.spawn((
+                RigidBody::Dynamic,
+                Damping {
+                    linear_damping: 10.,
+                    ..default()
+                },
+                LockedAxes::ROTATION_LOCKED,
+                Collider::cuboid(GRID_CELL_SIZE * 0.4, GRID_CELL_SIZE * 0.4),
+                NoiseSource {
+                    noise_radius: GRID_CELL_SIZE * 3.,
+                    active_radius: GRID_CELL_SIZE * 1.5,
+                    activated_by: None,
+                },
+                VisualMarker,
+                Observable,
+                TransformBundle::from_transform(Transform::from_translation(pos)),
+            ));
+        }
     }
 }
 

@@ -6,8 +6,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{
-        Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
-        GRID_CELL_SIZE,
+        Agent, LevelLayout, MaxItems, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE
     },
     observer::{Observable, Observer},
     world_objs::NoiseSource,
@@ -127,6 +126,7 @@ impl<'source> FromPyObject<'source> for AgentAction {
 #[pyclass]
 pub struct GameWrapper {
     pub app: App,
+    pub use_objs: bool,
     pub visualize: bool,
     pub recording_id: Option<String>,
 }
@@ -134,9 +134,13 @@ pub struct GameWrapper {
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new(visualize: bool, recording_id: Option<String>) -> Self {
+    pub fn new(use_objs: bool, visualize: bool, recording_id: Option<String>) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
+
+        if use_objs {
+            app.insert_resource(MaxItems(DEFAULT_LEVEL_SIZE));
+        }
 
         if visualize {
             app.add_plugins(VisualizerPlugin {
@@ -152,6 +156,7 @@ impl GameWrapper {
             app,
             visualize,
             recording_id,
+            use_objs,
         }
     }
 
@@ -167,7 +172,7 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
         self.app.run();
-        *self = Self::new(self.visualize, self.recording_id.clone());
+        *self = Self::new(self.use_objs, self.visualize, self.recording_id.clone());
         self.get_state()
     }
 }
@@ -370,7 +375,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false, None)
+        Self::new(false, false, None)
     }
 }
 

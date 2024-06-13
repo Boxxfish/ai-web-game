@@ -19,7 +19,7 @@ from webgame.envs import CELL_SIZE, GameEnv
 
 @dataclass
 class TrajDataAll:
-    seqs: List[List[np.ndarray]]
+    seqs: List[List[Tuple[np.ndarray, np.ndarray, np.ndarray]]]
     tiles: List[List[Tuple[int, int]]]
 
 def main() -> None:
@@ -27,9 +27,10 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--num-seqs", type=int, default=4_000)
+    parser.add_argument("--use-objs", default=False, action="store_true")
     args = parser.parse_args()
 
-    env = GameEnv()
+    env = GameEnv(use_objs=args.use_objs)
     action_space = env.action_space("pursuer")
     all_seqs = []
     all_tiles = []
@@ -48,7 +49,7 @@ def main() -> None:
                 actions[agent] = action
             obs, rewards_, dones_, truncs_, infos = env.step(actions)
             pursuer_obs = obs["pursuer"]
-            processed_obs = process_obs(pursuer_obs)[0]
+            processed_obs = process_obs(pursuer_obs)
             player_pos = env.game_state.player.pos
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE

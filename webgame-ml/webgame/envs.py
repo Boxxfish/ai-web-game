@@ -43,7 +43,7 @@ class GameEnv(pettingzoo.ParallelEnv):
     """
 
     def __init__(self, use_objs: bool = False, visualize: bool = False, recording_id: Optional[str] = None):
-        self.game = GameWrapper(visualize, recording_id)
+        self.game = GameWrapper(use_objs, visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]

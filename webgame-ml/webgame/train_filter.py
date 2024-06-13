@@ -161,6 +161,7 @@ def main() -> None:
     parser.add_argument("--save-every", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--use-pos", default=False, action="store_true")
+    parser.add_argument("--use-objs", default=False, action="store_true")
     args = parser.parse_args()
     device = torch.device(args.device)
 
