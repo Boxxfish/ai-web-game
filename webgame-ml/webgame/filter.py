@@ -95,7 +95,7 @@ def manual_update(
             agent_lkhd = 1.0
             if player_vis_grid is not None:
                 if player_vis_grid != (x, y):
-                    agent_lkhd = 0.0
+                    agent_lkhd = 0.01
             else:
                 # Cells within vision have 0% chance of agent being there
                 agent_lkhd = 1 - int(
@@ -107,7 +107,6 @@ def manual_update(
                 )
             lkhd[y][x] = grid_lkhd * agent_lkhd
     return lkhd
-
 
 def model_update(
     model: nn.Module,
@@ -122,6 +121,7 @@ def model_update(
     ],
     np.ndarray,
 ]:
+    @torch.no_grad()
     def model_update_(
         obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
         use_objs: bool,
@@ -130,17 +130,16 @@ def model_update(
         size: int,
         cell_size: float,
     ) -> np.ndarray:
-        with torch.no_grad():
-            lkhd = (
-                model(
-                    torch.from_numpy(obs[0]).unsqueeze(0).float(),
-                    torch.from_numpy(obs[1]).unsqueeze(0).float() if use_objs else None,
-                    torch.from_numpy(obs[2]).unsqueeze(0).float() if use_objs else None,
-                )
-                .squeeze(0)
-                .numpy()
+        lkhd = (
+            model(
+                torch.from_numpy(obs[0]).unsqueeze(0).float(),
+                torch.from_numpy(obs[1]).unsqueeze(0).float() if use_objs else None,
+                torch.from_numpy(obs[2]).unsqueeze(0).float() if use_objs else None,
             )
-            return lkhd
+            .squeeze(0)
+            .numpy()
+        )
+        return lkhd
 
     return model_update_
 
