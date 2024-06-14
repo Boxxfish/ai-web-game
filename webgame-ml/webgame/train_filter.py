@@ -163,12 +163,13 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--save-every", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--use-pos", default=False, action="store_true")
     parser.add_argument("--use-objs", default=False, action="store_true")
     parser.add_argument("--lkhd-min", type=float, default=0.0)
+    parser.add_argument("--only-opt-last", default=False, action="store_true")
     args = parser.parse_args()
     device = torch.device(args.device)
     lkhd_min = args.lkhd_min
@@ -297,6 +298,8 @@ def main() -> None:
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
+                if args.only_opt_last and step < seq_len - 1:
+                    continue
                 loss += ce(priors, batch_y[:, step])
             opt.zero_grad()
             loss.backward()
