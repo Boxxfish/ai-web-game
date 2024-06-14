@@ -17,7 +17,6 @@ impl Plugin for WorldObjPlugin {
                 visualize_door,
                 update_noise_src,
                 visualize_noise_src,
-                update_visual_marker,
                 visualize_visual_marker,
             ),
         );
@@ -131,47 +130,18 @@ fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform,
     }
 }
 
-/// A visual marker that changes state when an agent is close.
-/// Initially starts off as `true`, becomes `false` on state change.
+/// A visual marker.
+/// Observers record the last seen positions of these items.
 #[derive(Component)]
-pub struct VisualMarker {
-    pub state: bool,
-}
-
-impl Default for VisualMarker {
-    fn default() -> Self {
-        Self { state: true }
-    }
-}
-
-/// How close an agent has to be before the marker is toggled.
-const VISUAL_TOGGLE_DIST: f32 = GRID_CELL_SIZE * 1.5;
-
-/// Toggles the state of the visual marker when an agent gets close.
-fn update_visual_marker(
-    agent_query: Query<&GlobalTransform, With<Agent>>,
-    mut visual_query: Query<(&GlobalTransform, &mut VisualMarker)>,
-) {
-    for (obj_xform, mut visual) in visual_query.iter_mut() {
-        for agent_xform in agent_query.iter() {
-            let agent_pos = agent_xform.translation().xy();
-            let obj_pos = obj_xform.translation().xy();
-            let dist_sq = (obj_pos - agent_pos).length_squared();
-            if dist_sq <= VISUAL_TOGGLE_DIST.powi(2) {
-                visual.state = false;
-            }
-        }
-    }
-}
+pub struct VisualMarker;
 
 /// Visualizes a visual marker.
-fn visualize_visual_marker(mut gizmos: Gizmos, visual_query: Query<(&GlobalTransform, &VisualMarker)>) {
+fn visualize_visual_marker(
+    mut gizmos: Gizmos,
+    visual_query: Query<(&GlobalTransform, &VisualMarker)>,
+) {
     for (obj_xform, visual) in visual_query.iter() {
         let obj_pos = obj_xform.translation().xy();
-        gizmos.circle_2d(obj_pos, VISUAL_TOGGLE_DIST, Color::BLUE);
-        gizmos.rect_2d(obj_pos, 0.,  Vec2::ONE * GRID_CELL_SIZE * 0.5, match visual.state {
-            true => Color::GREEN,
-            false => Color::RED,
-        });
+        gizmos.rect_2d(obj_pos, 0., Vec2::ONE * GRID_CELL_SIZE * 0.5, Color::RED);
     }
 }

@@ -7,7 +7,7 @@ from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
 from webgame.common import explore_policy, pos_to_grid, process_obs
-from webgame.envs import CELL_SIZE, VisionGameEnv
+from webgame.envs import CELL_SIZE, GameEnv
 
 from torch import nn
 
@@ -24,22 +24,37 @@ class BayesFilter:
         size: int,
         cell_size: float,
         update_fn: Callable[
-            [np.ndarray, GameState, AgentState, int, float], np.ndarray
+            [
+                Tuple[np.ndarray, np.ndarray, np.ndarray],
+                bool,
+                GameState,
+                AgentState,
+                int,
+                float,
+            ],
+            np.ndarray,
         ],
+        use_objs: bool,
     ):
         self.size = size
         self.cell_size = cell_size
         self.belief = np.ones([size, size]) / size**2
         self.update_fn = update_fn
+        self.use_objs = use_objs
 
     def localize(
-        self, obs: np.ndarray, game_state: GameState, agent_state: AgentState
+        self,
+        obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        game_state: GameState,
+        agent_state: AgentState,
     ) -> np.ndarray:
         """
         Given an agent's observations, returns the new location probabilities.
         """
         self.belief = self.predict(self.belief)
-        lkhd = self.update_fn(obs, game_state, agent_state, self.size, self.cell_size)
+        lkhd = self.update_fn(
+            obs, self.use_objs, game_state, agent_state, self.size, self.cell_size
+        )
         self.belief = lkhd * self.belief
         self.belief = self.belief / self.belief.sum()
         return self.belief
@@ -52,12 +67,14 @@ class BayesFilter:
 
 
 def manual_update(
-    obs: np.ndarray,
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
+    use_objs: bool,
     game_state: GameState,
     agent_state: AgentState,
     size: int,
     cell_size: float,
 ) -> np.ndarray:
+    assert not use_objs, "Not compatible with objects"
     # Check whether agent can see the player
     player_e, player_obs = list(
         filter(lambda t: t[1].obj_type == "player", game_state.objects.items())
@@ -94,23 +111,45 @@ def manual_update(
 
 def model_update(
     model: nn.Module,
-) -> Callable[[np.ndarray, GameState, AgentState, int, float], np.ndarray]:
+) -> Callable[
+    [
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+        bool,
+        GameState,
+        AgentState,
+        int,
+        float,
+    ],
+    np.ndarray,
+]:
     def model_update_(
-        obs: np.ndarray,
+        obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        use_objs: bool,
         game_state: GameState,
         agent_state: AgentState,
         size: int,
         cell_size: float,
     ) -> np.ndarray:
         with torch.no_grad():
-            lkhd = model(torch.from_numpy(obs).unsqueeze(0)).squeeze(0).numpy()
+            if use_objs:
+                lkhd = (
+                    model(
+                        torch.from_numpy(obs[0]).unsqueeze(0),
+                        torch.from_numpy(obs[1]).unsqueeze(0),
+                        torch.from_numpy(obs[2]).unsqueeze(0),
+                    )
+                    .squeeze(0)
+                    .numpy()
+                )
+            else:
+                lkhd = model(torch.from_numpy(obs[0]).unsqueeze(0)).squeeze(0).numpy()
             return lkhd
 
     return model_update_
 
 
 if __name__ == "__main__":
-    from webgame.envs import ObjsGameEnv
+    from webgame.envs import GameEnv
     import rerun as rr  # type: ignore
     import random
     from argparse import ArgumentParser
@@ -123,7 +162,7 @@ if __name__ == "__main__":
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
 
-    env = VisionGameEnv(visualize=True, recording_id=recording_id)
+    env = GameEnv(visualize=True, recording_id=recording_id)
     env.reset()
 
     action_space = env.action_space("pursuer")  # Same for both agents
@@ -134,7 +173,7 @@ if __name__ == "__main__":
         update_fn = model_update(model)
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn)
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False)
     for _ in range(100):
         actions = {}
         for agent in env.agents:
@@ -148,7 +187,9 @@ if __name__ == "__main__":
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
-        lkhd = update_fn(obs, game_state, agent_state, game_state.level_size, CELL_SIZE)
+        lkhd = update_fn(
+            obs, False, game_state, agent_state, game_state.level_size, CELL_SIZE
+        )
         probs = b_filter.localize(obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)

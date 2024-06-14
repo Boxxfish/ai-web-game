@@ -15,12 +15,11 @@ from tqdm import tqdm
 from dataclasses import dataclass
 
 from webgame.common import explore_policy, process_obs, pos_to_grid
-from webgame.envs import CELL_SIZE, VisionGameEnv
-
+from webgame.envs import CELL_SIZE, GameEnv
 
 @dataclass
 class TrajDataAll:
-    seqs: List[List[np.ndarray]]
+    seqs: List[List[Tuple[np.ndarray, np.ndarray, np.ndarray]]]
     tiles: List[List[Tuple[int, int]]]
 
 def main() -> None:
@@ -28,9 +27,10 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default="./runs")
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--num-seqs", type=int, default=4_000)
+    parser.add_argument("--use-objs", default=False, action="store_true")
     args = parser.parse_args()
 
-    env = VisionGameEnv()
+    env = GameEnv(use_objs=args.use_objs)
     action_space = env.action_space("pursuer")
     all_seqs = []
     all_tiles = []

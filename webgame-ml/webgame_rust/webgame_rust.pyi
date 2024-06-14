@@ -25,10 +25,9 @@ class VMData:
     """
     Data on visual markers.
     """
-    last_seen: bool
-    last_seen_elapsed: Optional[bool]
-    last_state: bool
-    state_changed: bool
+    last_seen: float
+    last_seen_elapsed: float
+    last_pos: PyVec2
 
 class AgentState:
     """
@@ -53,10 +52,12 @@ class GameState:
     noise_sources: Mapping[int, NoiseSourceObj]
 
 class GameWrapper:
-    def __init__(self, visualize: bool, recording_id: Optional[str]) -> None:
+    def __init__(self, use_objs: bool, visualize: bool, recording_id: Optional[str]) -> None:
         """
         Args:
+            use_objs: Whether the environment should add objects to the scene.
             visualize: If we should log visuals to Rerun.
+            recording_id: Recording ID used by Rerun. Useful for syncing data between Python and Rust.
         """
         ...
     def step(

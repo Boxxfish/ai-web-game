@@ -25,7 +25,11 @@ pub struct CoreGamePlugin;
 impl Plugin for CoreGamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
-            .add_plugins((NetPlugin, GridworldPlugin, ObserverPlugin, WorldObjPlugin));
+            .add_plugins((NetPlugin, GridworldPlugin, ObserverPlugin, WorldObjPlugin))
+            .insert_resource(RapierConfiguration {
+                gravity: Vec2::ZERO,
+                ..default()
+            });
     }
 }
 
@@ -88,6 +92,7 @@ impl Plugin for LibCfgPlugin {
             FIXED_TS,
         )))
         .insert_resource(RapierConfiguration {
+            gravity: Vec2::ZERO,
             timestep_mode: TimestepMode::Fixed {
                 dt: FIXED_TS,
                 substeps: 10,

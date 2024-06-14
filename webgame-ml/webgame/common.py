@@ -6,15 +6,14 @@ from webgame_rust import GameState
 from webgame.envs import CELL_SIZE
 
 
-def process_obs(obs: Tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-    scalar_obs, grid_obs = obs
-    scalar_size = scalar_obs.shape[0]
+def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    scalar_obs, grid_obs = obs[:2]
     grid_shape = grid_obs.shape
     scalar_obs = np.tile(
         scalar_obs[..., np.newaxis, np.newaxis], [1] + list(grid_shape)
     )
     grid_obs = grid_obs[np.newaxis, ...]
-    return np.concatenate([scalar_obs, grid_obs], 0)
+    return np.concatenate([scalar_obs, grid_obs], 0), obs[2], obs[3]
 
 
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:

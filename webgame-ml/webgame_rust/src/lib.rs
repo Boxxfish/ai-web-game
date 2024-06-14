@@ -6,8 +6,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{
-        Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
-        GRID_CELL_SIZE,
+        Agent, LevelLayout, MaxItems, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE
     },
     observer::{Observable, Observer},
     world_objs::NoiseSource,
@@ -59,11 +58,9 @@ pub struct VMData {
     #[pyo3(get)]
     pub last_seen: f32,
     #[pyo3(get)]
-    pub last_seen_elapsed: Option<f32>,
+    pub last_seen_elapsed: f32,
     #[pyo3(get)]
-    pub last_state: bool,
-    #[pyo3(get)]
-    pub state_changed: bool,
+    pub last_pos: PyVec2,
 }
 
 /// Contains the state of an agent for a single frame.
@@ -129,6 +126,7 @@ impl<'source> FromPyObject<'source> for AgentAction {
 #[pyclass]
 pub struct GameWrapper {
     pub app: App,
+    pub use_objs: bool,
     pub visualize: bool,
     pub recording_id: Option<String>,
 }
@@ -136,9 +134,13 @@ pub struct GameWrapper {
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new(visualize: bool, recording_id: Option<String>) -> Self {
+    pub fn new(use_objs: bool, visualize: bool, recording_id: Option<String>) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
+
+        if use_objs {
+            app.insert_resource(MaxItems(DEFAULT_LEVEL_SIZE));
+        }
 
         if visualize {
             app.add_plugins(VisualizerPlugin {
@@ -154,6 +156,7 @@ impl GameWrapper {
             app,
             visualize,
             recording_id,
+            use_objs,
         }
     }
 
@@ -169,7 +172,7 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
         self.app.run();
-        *self = Self::new(self.visualize, self.recording_id.clone());
+        *self = Self::new(self.use_objs, self.visualize, self.recording_id.clone());
         self.get_state()
     }
 }
@@ -210,9 +213,8 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
                 e.to_bits(),
                 VMData {
                     last_seen: vm_data.last_seen,
-                    last_state: vm_data.last_state,
-                    state_changed: vm_data.state_changed,
                     last_seen_elapsed: vm_data.last_seen_elapsed,
+                    last_pos: vm_data.last_pos.into(),
                 },
             )
         })
@@ -373,7 +375,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false, None)
+        Self::new(false, false, None)
     }
 }
 
