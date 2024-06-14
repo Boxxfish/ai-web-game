@@ -11,7 +11,7 @@ import functools
 # The maximum number of object vectors supported by the environment.
 MAX_OBJS = 16
 # The dimension of each object vector.
-OBJ_DIM = 9
+OBJ_DIM = 8
 
 # The world space size of a grid cell
 CELL_SIZE = 25
@@ -145,17 +145,16 @@ class GameEnv(pettingzoo.ParallelEnv):
 
         obs_vecs = np.zeros([MAX_OBJS, OBJ_DIM], dtype=float)
         for i, e in enumerate(agent_state.observing):
-            obs_obj = game_state.objects[e]
-            obj_features = np.zeros([OBJ_DIM])
-            obj_features[0] = 0.5 + obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
-            obj_features[1] = 0.5 + obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
-            obj_features[2] = 1
             if e in agent_state.vm_data:
+                obs_obj = game_state.objects[e]
+                obj_features = np.zeros([OBJ_DIM])
+                obj_features[0] = 0.5 + obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
+                obj_features[1] = 0.5 + obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
+                obj_features[2] = 1
                 vm_data = agent_state.vm_data[e]
-                obj_features[5] = 1
-                obj_features[6] = vm_data.last_seen_elapsed / 10.0
-                obj_features[7] = obs_obj.pos.x - vm_data.last_pos.x
-                obj_features[8] = obs_obj.pos.y - vm_data.last_pos.y
+                obj_features[5] = vm_data.last_seen_elapsed / 10.0
+                obj_features[6] = obs_obj.pos.x - vm_data.last_pos.x
+                obj_features[7] = obs_obj.pos.y - vm_data.last_pos.y
             obs_vecs[i] = obj_features
         for i, e in enumerate(agent_state.listening):
             obj_noise = game_state.noise_sources[e]
