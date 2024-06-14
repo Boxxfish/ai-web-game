@@ -131,18 +131,15 @@ def model_update(
         cell_size: float,
     ) -> np.ndarray:
         with torch.no_grad():
-            if use_objs:
-                lkhd = (
-                    model(
-                        torch.from_numpy(obs[0]).unsqueeze(0),
-                        torch.from_numpy(obs[1]).unsqueeze(0),
-                        torch.from_numpy(obs[2]).unsqueeze(0),
-                    )
-                    .squeeze(0)
-                    .numpy()
+            lkhd = (
+                model(
+                    torch.from_numpy(obs[0]).unsqueeze(0).float(),
+                    torch.from_numpy(obs[1]).unsqueeze(0).float() if use_objs else None,
+                    torch.from_numpy(obs[2]).unsqueeze(0).float() if use_objs else None,
                 )
-            else:
-                lkhd = model(torch.from_numpy(obs[0]).unsqueeze(0)).squeeze(0).numpy()
+                .squeeze(0)
+                .numpy()
+            )
             return lkhd
 
     return model_update_
@@ -156,6 +153,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--use-pos", action="store_true")
     args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
@@ -168,7 +166,7 @@ if __name__ == "__main__":
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
     if args.checkpoint:
-        model = MeasureModel(8, env.game_state.level_size, True)
+        model = MeasureModel(8, env.game_state.level_size, args.use_pos)
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
     else:

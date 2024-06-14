@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--use-objs", action="set_true")
+    parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--run-steps", type=int, default=100)
     args = parser.parse_args()

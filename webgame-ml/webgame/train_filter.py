@@ -168,19 +168,13 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--use-pos", default=False, action="store_true")
     parser.add_argument("--use-objs", default=False, action="store_true")
+    parser.add_argument("--lkhd-min", type=float, default=0.0)
     args = parser.parse_args()
     device = torch.device(args.device)
+    lkhd_min = args.lkhd_min
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
-
-    out_dir = Path(args.out_dir)
-    out_id = "".join(
-        [random.choice(string.ascii_letters + string.digits) for _ in range(8)]
-    )
-    os.mkdir(out_dir / out_id)
-    chkpt_path = out_dir / out_id / "checkpoints"
-    os.mkdir(chkpt_path)
 
     ds_x_grid = torch.tensor(
         [[x[0] for x in xs] for xs in traj_data_all.seqs],
@@ -242,6 +236,16 @@ def main() -> None:
     wandb_config.update(args.__dict__)
     wandb.init(project="pursuer", config=wandb_config)
 
+    assert wandb.run is not None
+    while wandb.run.name is None:
+        pass
+    out_id = wandb.run.name
+
+    out_dir = Path(args.out_dir)
+    os.mkdir(out_dir / out_id)
+    chkpt_path = out_dir / out_id / "checkpoints"
+    os.mkdir(chkpt_path)
+
     batch_size = args.batch_size
     batches_per_epoch = num_seqs_train // batch_size
     for epoch in tqdm(range(args.epochs)):
@@ -284,6 +288,7 @@ def main() -> None:
                     ),
                     1,
                 )  # Shape: (batch_size, grid_size * grid_size)
+                lkhd = lkhd * (1 - lkhd_min) + lkhd_min
                 new_priors = predict(
                     priors.reshape([batch_size, grid_size, grid_size])
                 ).flatten(
@@ -317,6 +322,7 @@ def main() -> None:
                     ),
                     [num_seqs_valid, grid_size**2],
                 )
+                lkhd = lkhd * (1 - lkhd_min) + lkhd_min
                 new_priors = predict(
                     priors.reshape([num_seqs_valid, grid_size, grid_size])
                 ).reshape([num_seqs_valid, grid_size**2])

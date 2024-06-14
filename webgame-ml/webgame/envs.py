@@ -155,7 +155,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                 obj_features[5] = vm_data.last_seen_elapsed / 10.0
                 obj_features[6] = obs_obj.pos.x - vm_data.last_pos.x
                 obj_features[7] = obs_obj.pos.y - vm_data.last_pos.y
-            obs_vecs[i] = obj_features
+                obs_vecs[i] = obj_features
         for i, e in enumerate(agent_state.listening):
             obj_noise = game_state.noise_sources[e]
             obj_features = np.zeros([OBJ_DIM])
