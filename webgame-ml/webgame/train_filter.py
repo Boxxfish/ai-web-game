@@ -55,9 +55,7 @@ class MeasureModel(nn.Module):
         self.pos = torch.stack(
             [x_channel, y_channel]
         )  # Shape: (2, grid_size, grid_size)
-        self.pos.requires_grad = (
-            False
-        )
+        self.pos.requires_grad = False
         self.use_pos = use_pos
 
         # Fusion of object features into grid + scalar features
@@ -129,12 +127,16 @@ class MeasureModel(nn.Module):
             attns = [self.attn1, self.attn2, self.attn3]
             bns = [self.bn1, self.bn2, self.bn3]
             for attn, bn in zip(attns, bns):
-                grid_features = attn(
-                    query=grid_features,
-                    key=objs,
-                    value=objs,
-                    key_padding_mask=objs_attn_mask,
-                )[0]
+                attn_grid_features = torch.nan_to_num(
+                    attn(
+                        query=grid_features,
+                        key=objs,
+                        value=objs,
+                        key_padding_mask=objs_attn_mask,
+                    )[0],
+                    0.0,
+                )  # Sometimes there are no objects, causing NANs
+                grid_features = grid_features + attn_grid_features
                 grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
                 grid_features = nn.functional.silu(grid_features)
             grid_features = grid_features.reshape(orig_shape).permute(
@@ -265,9 +267,7 @@ def main() -> None:
                 seq_idxs[batch_idx * batch_size : (batch_idx + 1) * batch_size]
             ]
             priors = (
-                torch.ones(
-                    [batch_size, grid_size**2], dtype=torch.float, device=device
-                )
+                torch.ones([batch_size, grid_size**2], dtype=torch.float, device=device)
                 / grid_size**2
             )
             loss = torch.zeros([1], device=device)
@@ -275,14 +275,20 @@ def main() -> None:
                 lkhd = torch.flatten(
                     model(
                         batch_x_grid[:, step, :, :, :],
-                        batch_x_objs[:, step, :, :] if batch_x_objs is not None else None,
+                        (
+                            batch_x_objs[:, step, :, :]
+                            if batch_x_objs is not None
+                            else None
+                        ),
                         batch_x_mask[:, step, :] if batch_x_mask is not None else None,
                     ),
-                    1
-                ) # Shape: (batch_size, grid_size * grid_size)
+                    1,
+                )  # Shape: (batch_size, grid_size * grid_size)
                 new_priors = predict(
                     priors.reshape([batch_size, grid_size, grid_size])
-                ).flatten(1) # Shape: (batch_size, grid_size * grid_size)
+                ).flatten(
+                    1
+                )  # Shape: (batch_size, grid_size * grid_size)
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
