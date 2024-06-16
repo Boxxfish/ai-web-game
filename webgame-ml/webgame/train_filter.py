@@ -10,6 +10,7 @@ import string
 from typing import *
 import pickle as pkl
 
+from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
