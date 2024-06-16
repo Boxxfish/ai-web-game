@@ -63,7 +63,7 @@ class BayesFilter:
         kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
         kernel = kernel / kernel.sum()
         belief = signal.convolve2d(belief, kernel, mode="same")
-        return belief / belief.sum()
+        return belief
 
 
 def manual_update(
