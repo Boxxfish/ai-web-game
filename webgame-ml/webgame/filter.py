@@ -63,7 +63,7 @@ class BayesFilter:
         kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
         kernel = kernel / kernel.sum()
         belief = signal.convolve2d(belief, kernel, mode="same")
-        return belief / belief.sum()
+        return belief
 
 
 def manual_update(
@@ -95,7 +95,7 @@ def manual_update(
             agent_lkhd = 1.0
             if player_vis_grid is not None:
                 if player_vis_grid != (x, y):
-                    agent_lkhd = 0.0
+                    agent_lkhd = 0.01
             else:
                 # Cells within vision have 0% chance of agent being there
                 agent_lkhd = 1 - int(
@@ -107,7 +107,6 @@ def manual_update(
                 )
             lkhd[y][x] = grid_lkhd * agent_lkhd
     return lkhd
-
 
 def model_update(
     model: nn.Module,
@@ -122,6 +121,7 @@ def model_update(
     ],
     np.ndarray,
 ]:
+    @torch.no_grad()
     def model_update_(
         obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
         use_objs: bool,
@@ -130,20 +130,16 @@ def model_update(
         size: int,
         cell_size: float,
     ) -> np.ndarray:
-        with torch.no_grad():
-            if use_objs:
-                lkhd = (
-                    model(
-                        torch.from_numpy(obs[0]).unsqueeze(0),
-                        torch.from_numpy(obs[1]).unsqueeze(0),
-                        torch.from_numpy(obs[2]).unsqueeze(0),
-                    )
-                    .squeeze(0)
-                    .numpy()
-                )
-            else:
-                lkhd = model(torch.from_numpy(obs[0]).unsqueeze(0)).squeeze(0).numpy()
-            return lkhd
+        lkhd = (
+            model(
+                torch.from_numpy(obs[0]).unsqueeze(0).float(),
+                torch.from_numpy(obs[1]).unsqueeze(0).float() if use_objs else None,
+                torch.from_numpy(obs[2]).unsqueeze(0).float() if use_objs else None,
+            )
+            .squeeze(0)
+            .numpy()
+        )
+        return lkhd
 
     return model_update_
 
@@ -156,6 +152,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--use-pos", action="store_true")
     args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
@@ -168,7 +165,7 @@ if __name__ == "__main__":
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
     if args.checkpoint:
-        model = MeasureModel(8, env.game_state.level_size, True)
+        model = MeasureModel(8, env.game_state.level_size, args.use_pos)
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
     else:

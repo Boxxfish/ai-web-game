@@ -1,3 +1,4 @@
+import math
 import random
 from typing import *
 import numpy as np
@@ -19,13 +20,37 @@ def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> T
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:
     return (int(round(x / cell_size)), int(round(y / cell_size)))
 
+DIRS = [
+    (-1, 0, 7),
+    (1, 0, 3),
+    (0, 1, 1),
+    (0, -1, 5),
+]
 
 def explore_policy(game_state: GameState, is_pursuer: bool) -> int:
     if is_pursuer:
         agent_state = game_state.pursuer
+        other_state = game_state.player
     else:
         agent_state = game_state.player
+        other_state = game_state.pursuer
 
+    # If agents are too close, move away from each other
+    dx = agent_state.pos.x - other_state.pos.x
+    dy = agent_state.pos.y - other_state.pos.y
+    length = math.sqrt(dx**2 + dy**2)
+    dx = dx / (length + 0.001)
+    dy = dy / (length + 0.001)
+    if length <= CELL_SIZE * 2:
+        best_dir = max(DIRS, key=lambda x: x[0] * dx + x[1] * dy)
+        return best_dir[2]
+        
+    # Small chance of looking at each other
+    if random.random() < 0.1:
+        best_dir = max(DIRS, key=lambda x: x[0] * -dx + x[1] * -dy)
+        return best_dir[2]
+    
+    # Otherwise, randomly move away from walls
     level_size = game_state.level_size
     tile = pos_to_grid(agent_state.pos.x, agent_state.pos.y, level_size, CELL_SIZE)
     x, y = tile

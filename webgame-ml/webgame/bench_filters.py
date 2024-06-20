@@ -19,7 +19,8 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--use-objs", action="set_true")
+    parser.add_argument("--use-objs", default=False, action="store_true")
+    parser.add_argument("--use-pos", default=False, action="store_true")
     parser.add_argument("--num-runs", type=int, default=100)
     parser.add_argument("--run-steps", type=int, default=100)
     args = parser.parse_args()
@@ -30,18 +31,20 @@ if __name__ == "__main__":
 
     action_space = env.action_space("pursuer")  # Same for both agents
     if args.checkpoint:
-        model = MeasureModel(8, env.game_state.level_size, True)
+        model = MeasureModel(8, env.game_state.level_size, args.use_pos)
+        model.eval()
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(
-        env.game_state.level_size, CELL_SIZE, update_fn, use_objs=args.use_objs
-    )
     correct_preds = 0
+    exp_accuracy = 0.0
     for run in tqdm(range(args.num_runs)):
         env.reset()
         assert env.game_state is not None
+        b_filter = BayesFilter(
+            env.game_state.level_size, CELL_SIZE, update_fn, use_objs=args.use_objs
+        )
         for step in range(args.run_steps):
             actions = {}
             for agent in env.agents:
@@ -71,9 +74,10 @@ if __name__ == "__main__":
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
             )
             gold_tile_idx = gold_tile[0] + gold_tile[1] * env.game_state.level_size
-            print(gold_tile_idx)
 
             if probs_flattened.argmax() == gold_tile_idx:
                 correct_preds += 1
+            exp_accuracy += float(probs_flattened[gold_tile_idx])
 
     print("Accuracy:", correct_preds / (args.num_runs * args.run_steps))
+    print("Expected Accuracy:", exp_accuracy / (args.num_runs * args.run_steps))

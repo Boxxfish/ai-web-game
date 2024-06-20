@@ -10,6 +10,7 @@ import string
 from typing import *
 import pickle as pkl
 
+from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
@@ -34,17 +35,18 @@ class MeasureModel(nn.Module):
         if use_pos:
             num_channels += 2
         self.use_objs = objs_shape is not None
-        proj_dim = 64
+        proj_dim = 32
 
         # Grid + scalar feature processing
+        mid_channels = 16
         self.grid_net = nn.Sequential(
-            nn.Conv2d(num_channels, 32, 3, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(32, dtype=torch.float),
+            nn.Conv2d(num_channels, mid_channels, 5, padding="same", dtype=torch.float),
+            nn.BatchNorm2d(mid_channels, dtype=torch.float),
             nn.SiLU(),
-            nn.Conv2d(32, 32, 3, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(32, dtype=torch.float),
+            nn.Conv2d(mid_channels, mid_channels, 5, padding="same", dtype=torch.float),
+            nn.BatchNorm2d(mid_channels, dtype=torch.float),
             nn.SiLU(),
-            nn.Conv2d(32, proj_dim, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(mid_channels, proj_dim, 5, padding="same", dtype=torch.float),
             nn.BatchNorm2d(proj_dim, dtype=torch.float),
             nn.SiLU(),
         )
@@ -139,7 +141,7 @@ class MeasureModel(nn.Module):
                 grid_features = grid_features + attn_grid_features
                 grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
                 grid_features = nn.functional.silu(grid_features)
-            grid_features = grid_features.reshape(orig_shape).permute(
+            grid_features = grid_features.view(orig_shape).permute(
                 0, 3, 1, 2
             )  # Shape: (batch_size, grid_features_dim, grid_size, grid_size)
 
@@ -154,34 +156,30 @@ def predict(belief: Tensor) -> Tensor:
     )
     kernel = kernel / kernel.sum()
     belief = torch.nn.functional.conv2d(belief.unsqueeze(1), kernel, padding="same")
-    return belief / belief.sum()
+    return belief
 
 
 def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--traj-dir", type=str)
     parser.add_argument("--out-dir", type=str, default="./runs")
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--save-every", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--use-pos", default=False, action="store_true")
     parser.add_argument("--use-objs", default=False, action="store_true")
+    parser.add_argument("--lkhd-min", type=float, default=0.001)
+    parser.add_argument("--only-opt-last", default=False, action="store_true")
+
     args = parser.parse_args()
     device = torch.device(args.device)
+    lkhd_min = args.lkhd_min
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
-
-    out_dir = Path(args.out_dir)
-    out_id = "".join(
-        [random.choice(string.ascii_letters + string.digits) for _ in range(8)]
-    )
-    os.mkdir(out_dir / out_id)
-    chkpt_path = out_dir / out_id / "checkpoints"
-    os.mkdir(chkpt_path)
-
+              
     ds_x_grid = torch.tensor(
         [[x[0] for x in xs] for xs in traj_data_all.seqs],
         device=device,
@@ -223,7 +221,7 @@ def main() -> None:
         valid_x_mask = ds_x_mask[num_seqs_train:]
     valid_y = ds_y[num_seqs_train:]
     del traj_data_all, ds_x_grid, ds_x_objs, ds_x_mask, ds_y
-    ce = nn.CrossEntropyLoss()
+    nll = nn.NLLLoss()
     model = MeasureModel(
         channels,
         grid_size,
@@ -241,6 +239,16 @@ def main() -> None:
     }
     wandb_config.update(args.__dict__)
     wandb.init(project="pursuer", config=wandb_config)
+
+    assert wandb.run is not None
+    while wandb.run.name is None:
+        pass
+    out_id = wandb.run.name
+
+    out_dir = Path(args.out_dir)
+    os.mkdir(out_dir / out_id)
+    chkpt_path = out_dir / out_id / "checkpoints"
+    os.mkdir(chkpt_path)
 
     batch_size = args.batch_size
     batches_per_epoch = num_seqs_train // batch_size
@@ -284,15 +292,18 @@ def main() -> None:
                     ),
                     1,
                 )  # Shape: (batch_size, grid_size * grid_size)
+                lkhd = lkhd * (1 - lkhd_min) + lkhd_min
                 new_priors = predict(
-                    priors.reshape([batch_size, grid_size, grid_size])
+                    priors.view([batch_size, grid_size, grid_size])
                 ).flatten(
                     1
                 )  # Shape: (batch_size, grid_size * grid_size)
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
-                loss += ce(priors, batch_y[:, step])
+                if args.only_opt_last and step < seq_len - 1:
+                    continue
+                loss += nll(priors.log(), batch_y[:, step])
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -309,21 +320,20 @@ def main() -> None:
                 / grid_size**2
             )
             for step in range(seq_len):
-                lkhd = torch.reshape(
-                    model(
+                lkhd = model(
                         valid_x_grid[:, step, :, :, :],
                         valid_x_objs[:, step, :, :] if args.use_objs else None,
                         valid_x_mask[:, step, :] if args.use_objs else None,
-                    ),
-                    [num_seqs_valid, grid_size**2],
-                )
+                    ).view([num_seqs_valid, grid_size**2])
+                lkhd = lkhd * (1 - lkhd_min) + lkhd_min
+
                 new_priors = predict(
-                    priors.reshape([num_seqs_valid, grid_size, grid_size])
-                ).reshape([num_seqs_valid, grid_size**2])
+                    priors.view([num_seqs_valid, grid_size, grid_size])
+                ).view([num_seqs_valid, grid_size**2])
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
-                avg_valid_loss += ce(priors, valid_y[:, step]).item()
+                avg_valid_loss += nll(priors.log(), valid_y[:, step]).item()
 
         avg_loss = avg_loss / batches_per_epoch
 
