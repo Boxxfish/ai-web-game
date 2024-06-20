@@ -172,13 +172,14 @@ def main() -> None:
     parser.add_argument("--use-objs", default=False, action="store_true")
     parser.add_argument("--lkhd-min", type=float, default=0.001)
     parser.add_argument("--only-opt-last", default=False, action="store_true")
+
     args = parser.parse_args()
     device = torch.device(args.device)
     lkhd_min = args.lkhd_min
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
-
+              
     ds_x_grid = torch.tensor(
         [[x[0] for x in xs] for xs in traj_data_all.seqs],
         device=device,
@@ -325,6 +326,7 @@ def main() -> None:
                         valid_x_mask[:, step, :] if args.use_objs else None,
                     ).view([num_seqs_valid, grid_size**2])
                 lkhd = lkhd * (1 - lkhd_min) + lkhd_min
+
                 new_priors = predict(
                     priors.view([num_seqs_valid, grid_size, grid_size])
                 ).view([num_seqs_valid, grid_size**2])
