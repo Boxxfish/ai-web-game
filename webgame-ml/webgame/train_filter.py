@@ -22,32 +22,45 @@ from webgame.gen_trajectories import TrajDataAll
 import wandb
 
 
-class MeasureModel(nn.Module):
+class Backbone(nn.Module):
     def __init__(
         self,
         channels: int,
+        out_channels: int,
         size: int,
         use_pos: bool = False,
         objs_shape: Optional[Tuple[int, int]] = None,
+        use_bn: bool = False,
     ):
         super().__init__()
         num_channels = channels
         if use_pos:
             num_channels += 2
         self.use_objs = objs_shape is not None
-        proj_dim = 32
 
         # Grid + scalar feature processing
         mid_channels = 16
         self.grid_net = nn.Sequential(
             nn.Conv2d(num_channels, mid_channels, 5, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(mid_channels, dtype=torch.float),
+            (
+                nn.BatchNorm2d(mid_channels, dtype=torch.float)
+                if use_bn
+                else nn.Identity()
+            ),
             nn.SiLU(),
             nn.Conv2d(mid_channels, mid_channels, 5, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(mid_channels, dtype=torch.float),
+            (
+                nn.BatchNorm2d(mid_channels, dtype=torch.float)
+                if use_bn
+                else nn.Identity()
+            ),
             nn.SiLU(),
-            nn.Conv2d(mid_channels, proj_dim, 5, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(proj_dim, dtype=torch.float),
+            nn.Conv2d(mid_channels, out_channels, 5, padding="same", dtype=torch.float),
+            (
+                nn.BatchNorm2d(mid_channels, dtype=torch.float)
+                if use_bn
+                else nn.Identity()
+            ),
             nn.SiLU(),
         )
 
@@ -59,44 +72,33 @@ class MeasureModel(nn.Module):
         )  # Shape: (2, grid_size, grid_size)
         self.pos.requires_grad = False
         self.use_pos = use_pos
+        self.use_bn = use_bn
 
         # Fusion of object features into grid + scalar features
         if self.use_objs:
             assert objs_shape is not None
             _, obj_dim = objs_shape
             n_heads = 4
-            self.proj = nn.Conv1d(obj_dim, proj_dim, 1)
+            self.proj = nn.Conv1d(obj_dim, out_channels, 1)
             self.attn1 = nn.MultiheadAttention(
-                proj_dim, n_heads, batch_first=True, dtype=torch.float
+                out_channels, n_heads, batch_first=True, dtype=torch.float
             )
-            self.bn1 = nn.BatchNorm1d(proj_dim)
+            self.bn1 = nn.BatchNorm1d(out_channels)
             self.attn2 = nn.MultiheadAttention(
-                proj_dim, n_heads, batch_first=True, dtype=torch.float
+                out_channels, n_heads, batch_first=True, dtype=torch.float
             )
-            self.bn2 = nn.BatchNorm1d(proj_dim)
+            self.bn2 = nn.BatchNorm1d(out_channels)
             self.attn3 = nn.MultiheadAttention(
-                proj_dim, n_heads, batch_first=True, dtype=torch.float
+                out_channels, n_heads, batch_first=True, dtype=torch.float
             )
-            self.bn3 = nn.BatchNorm1d(proj_dim)
-
-        # Convert features into liklihood map
-        self.out_net = nn.Sequential(
-            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(32, dtype=torch.float),
-            nn.SiLU(),
-            nn.Conv2d(32, 32, 3, padding="same", dtype=torch.float),
-            nn.BatchNorm2d(32, dtype=torch.float),
-            nn.SiLU(),
-            nn.Conv2d(32, 1, 3, padding="same", dtype=torch.float),
-            nn.Sigmoid(),
-        )
+            self.bn3 = nn.BatchNorm1d(out_channels)
 
     def forward(
         self,
         grid: Tensor,  # Shape: (batch_size, channels, size, size)
         objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
         objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
-    ) -> Tensor:
+    ) -> Tensor:  # Shape: (batch_size, grid_features_dim, grid_size, grid_size)
         # Concat pos encoding to grid
         device = grid.device
         if self.use_pos:
@@ -139,11 +141,47 @@ class MeasureModel(nn.Module):
                     0.0,
                 )  # Sometimes there are no objects, causing NANs
                 grid_features = grid_features + attn_grid_features
-                grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
+                if self.use_bn:
+                    grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
                 grid_features = nn.functional.silu(grid_features)
             grid_features = grid_features.view(orig_shape).permute(
                 0, 3, 1, 2
             )  # Shape: (batch_size, grid_features_dim, grid_size, grid_size)
+
+        return grid_features
+
+
+class MeasureModel(nn.Module):
+    def __init__(
+        self,
+        channels: int,
+        size: int,
+        use_pos: bool = False,
+        objs_shape: Optional[Tuple[int, int]] = None,
+    ):
+        super().__init__()
+        proj_dim = 32
+        self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape, True)
+
+        # Convert features into liklihood map
+        self.out_net = nn.Sequential(
+            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
+            nn.BatchNorm2d(32, dtype=torch.float),
+            nn.SiLU(),
+            nn.Conv2d(32, 32, 3, padding="same", dtype=torch.float),
+            nn.BatchNorm2d(32, dtype=torch.float),
+            nn.SiLU(),
+            nn.Conv2d(32, 1, 3, padding="same", dtype=torch.float),
+            nn.Sigmoid(),
+        )
+
+    def forward(
+        self,
+        grid: Tensor,  # Shape: (batch_size, channels, size, size)
+        objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
+    ) -> Tensor:
+        grid_features = self.backbone(grid, objs, objs_attn_mask)
 
         return self.out_net(grid_features).squeeze(
             1
@@ -179,7 +217,7 @@ def main() -> None:
 
     with open(Path(args.traj_dir) / "traj_data_all.pkl", "rb") as f:
         traj_data_all: TrajDataAll = pkl.load(f)
-              
+
     ds_x_grid = torch.tensor(
         [[x[0] for x in xs] for xs in traj_data_all.seqs],
         device=device,
@@ -321,10 +359,10 @@ def main() -> None:
             )
             for step in range(seq_len):
                 lkhd = model(
-                        valid_x_grid[:, step, :, :, :],
-                        valid_x_objs[:, step, :, :] if args.use_objs else None,
-                        valid_x_mask[:, step, :] if args.use_objs else None,
-                    ).view([num_seqs_valid, grid_size**2])
+                    valid_x_grid[:, step, :, :, :],
+                    valid_x_objs[:, step, :, :] if args.use_objs else None,
+                    valid_x_mask[:, step, :] if args.use_objs else None,
+                ).view([num_seqs_valid, grid_size**2])
                 lkhd = lkhd * (1 - lkhd_min) + lkhd_min
 
                 new_priors = predict(

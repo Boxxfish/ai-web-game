@@ -2,6 +2,7 @@
 A rollout buffer for use with on-policy algorithms. Unlike a replay buffer,
 rollouts only store experience collected under a single policy.
 """
+
 from typing import List, Optional, Tuple
 
 import torch
@@ -16,7 +17,7 @@ class RolloutBuffer:
 
     def __init__(
         self,
-        state_shape: torch.Size,
+        state_shapes: List[Tuple[torch.Size, torch.dtype]],
         action_shape: torch.Size,
         action_probs_shape: torch.Size,
         action_dtype: torch.dtype,
@@ -24,7 +25,10 @@ class RolloutBuffer:
         num_steps: int,
     ):
         k = torch.float
-        state_shape = torch.Size([num_steps + 1, num_envs] + list(state_shape))
+        state_shapes = [
+            (torch.Size([num_steps + 1, num_envs] + list(state_shape)), dtype)
+            for state_shape, dtype in state_shapes
+        ]
         action_shape = torch.Size([num_steps, num_envs] + list(action_shape))
         action_probs_shape = torch.Size(
             [num_steps, num_envs] + list(action_probs_shape)
@@ -33,7 +37,10 @@ class RolloutBuffer:
         self.num_steps = num_steps
         self.next = 0
         d = torch.device("cpu")
-        self.states = torch.zeros(state_shape, dtype=k, device=d, requires_grad=False)
+        self.states = [
+            torch.zeros(state_shape, dtype=dtype, device=d, requires_grad=False)
+            for state_shape, dtype in state_shapes
+        ]
         self.actions = torch.zeros(
             action_shape, dtype=action_dtype, device=d, requires_grad=False
         )
@@ -102,7 +109,7 @@ class RolloutBuffer:
         self, batch_size: int, discount: float, lambda_: float, v_net: nn.Module
     ) -> list[
         Tuple[
-            torch.Tensor,
+            List[torch.Tensor],
             torch.Tensor,
             torch.Tensor,
             torch.Tensor,
@@ -152,7 +159,9 @@ class RolloutBuffer:
             # Permute transitions to decorrelate them
             exp_count = self.num_envs * self.num_steps
             indices = torch.randperm(exp_count, dtype=torch.int, device=d)
-            rand_prev_states = self.states.flatten(0, 1).index_select(0, indices)
+            rand_prev_states = [
+                states.flatten(0, 1).index_select(0, indices) for states in self.states
+            ]
             rand_actions = self.actions.flatten(0, 1).index_select(0, indices)
             rand_action_probs = self.action_probs.flatten(0, 1).index_select(0, indices)
             rand_masks = self.masks.flatten(0, 1).index_select(0, indices)
@@ -165,9 +174,10 @@ class RolloutBuffer:
                 end = (i + 1) * batch_size
                 batches.append(
                     (
-                        rand_prev_states[start:end].reshape(
-                            [batch_size] + list(self.states.shape)[2:]
-                        ),
+                        [
+                            r[start:end].reshape([batch_size] + list(s.shape)[2:])
+                            for r, s in zip(rand_prev_states, self.states)
+                        ],
                         rand_actions[start:end].reshape(
                             [batch_size] + list(self.actions.shape)[2:]
                         ),

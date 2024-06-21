@@ -1,11 +1,12 @@
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any
+from typing import *
 
-import envpool  # type: ignore
+import gymnasium as gym
 import torch
 import torch.nn as nn
+from torch import Tensor
 import wandb
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 from torch.distributions import Categorical
@@ -14,7 +15,8 @@ from tqdm import tqdm
 from webgame.algorithms.ppo import train_ppo
 from webgame.algorithms.rollout_buffer import RolloutBuffer
 from webgame.conf import entity
-from webgame.utils import init_orthogonal
+from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
+from webgame.train_filter import Backbone
 
 _: Any
 
@@ -37,47 +39,79 @@ class Config:
     eval_steps: int = 8  # Max number of steps to take during each eval run.
     v_lr: float = 0.01  # Learning rate of the value net.
     p_lr: float = 0.001  # Learning rate of the policy net.
+    use_objs: bool = False  # Whether we should use objects in the simulation.
     device: str = "cuda"  # Device to use during training.
 
 
 class ValueNet(nn.Module):
-    def __init__(self, obs_shape: torch.Size):
-        nn.Module.__init__(self)
-        flat_obs_dim = reduce(lambda e1, e2: e1 * e2, obs_shape, 1)
-        self.v_layer1 = nn.Linear(flat_obs_dim, 64)
-        self.v_layer2 = nn.Linear(64, 64)
-        self.v_layer3 = nn.Linear(64, 1)
-        self.relu = nn.ReLU()
-        init_orthogonal(self)
+    def __init__(
+        self,
+        channels: int,
+        size: int,
+        use_pos: bool = False,
+        objs_shape: Optional[Tuple[int, int]] = None,
+    ):
+        super().__init__()
+        proj_dim = 32
+        self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
+        self.net = nn.Sequential(
+            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(size**2 * 16, 256),
+            nn.SiLU(),
+            nn.Linear(256, 256),
+            nn.SiLU(),
+            nn.Linear(256, 1),
+        )
 
-    def forward(self, input: torch.Tensor):
-        x = self.v_layer1(input.flatten(1))
-        x = self.relu(x)
-        x = self.v_layer2(x)
-        x = self.relu(x)
-        x = self.v_layer3(x)
-        return x
+    def forward(
+        self,
+        grid: Tensor,  # Shape: (batch_size, channels, size, size)
+        objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
+    ) -> Tensor:
+        features = self.backbone(grid, objs, objs_attn_mask)
+        values = self.net(features)
+        return values
 
 
 class PolicyNet(nn.Module):
-    def __init__(self, obs_shape: torch.Size, action_count: int):
-        nn.Module.__init__(self)
-        flat_obs_dim = reduce(lambda e1, e2: e1 * e2, obs_shape, 1)
-        self.a_layer1 = nn.Linear(flat_obs_dim, 64)
-        self.a_layer2 = nn.Linear(64, 64)
-        self.a_layer3 = nn.Linear(64, action_count)
-        self.relu = nn.ReLU()
-        self.logits = nn.LogSoftmax(1)
-        init_orthogonal(self)
+    def __init__(
+        self,
+        channels: int,
+        size: int,
+        action_count: int,
+        use_pos: bool = False,
+        objs_shape: Optional[Tuple[int, int]] = None,
+    ):
+        super().__init__()
+        proj_dim = 32
+        self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
+        self.net = nn.Sequential(
+            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(size**2 * 16, 256),
+            nn.SiLU(),
+            nn.Linear(256, 256),
+            nn.SiLU(),
+            nn.Linear(256, action_count),
+        )
 
-    def forward(self, input: torch.Tensor):
-        x = self.a_layer1(input.flatten(1))
-        x = self.relu(x)
-        x = self.a_layer2(x)
-        x = self.relu(x)
-        x = self.a_layer3(x)
-        x = self.logits(x)
-        return x
+    def forward(
+        self,
+        grid: Tensor,  # Shape: (batch_size, channels, size, size)
+        objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
+    ) -> Tensor:
+        features = self.backbone(grid, objs, objs_attn_mask)
+        values = self.net(features)
+        return values
 
 
 if __name__ == "__main__":
@@ -100,20 +134,39 @@ if __name__ == "__main__":
         config=cfg.__dict__,
     )
 
-    env = envpool.make("CartPole-v1", "gym", num_envs=cfg.num_envs)
-    test_env = CartPoleEnv()
+    env = GameEnv(cfg.use_objs)
+    test_env = GameEnv(cfg.use_objs)
 
     # Initialize policy and value networks
-    obs_space = env.observation_space
+    channels = 7 + 2
+    grid_size = 8
+    max_objs = MAX_OBJS
+    obj_dim = OBJ_DIM
     act_space = env.action_space
-    v_net = ValueNet(obs_space.shape)
-    p_net = PolicyNet(obs_space.shape, act_space.n)
+    assert isinstance(act_space, gym.spaces.Discrete)
+    v_net = ValueNet(
+        channels,
+        grid_size,
+        args.use_pos,
+        (max_objs, obj_dim) if args.use_objs else None,
+    )
+    p_net = PolicyNet(
+        channels,
+        grid_size,
+        act_space.n,
+        args.use_pos,
+        (max_objs, obj_dim) if args.use_objs else None,
+    )
     v_opt = torch.optim.Adam(v_net.parameters(), lr=cfg.v_lr)
     p_opt = torch.optim.Adam(p_net.parameters(), lr=cfg.p_lr)
 
     # A rollout buffer stores experience collected during a sampling run
     buffer = RolloutBuffer(
-        obs_space.shape,
+        [
+            (torch.Size((channels, grid_size, grid_size)), torch.float),
+            (torch.Size((max_objs, obj_dim)), torch.float),
+            (torch.Size((max_objs,)), torch.bool),
+        ],
         torch.Size((1,)),
         torch.Size((act_space.n,)),
         torch.int,
@@ -122,7 +175,6 @@ if __name__ == "__main__":
     )
 
     obs = torch.Tensor(env.reset()[0])
-    done = False
     for _ in tqdm(range(cfg.iterations), position=0):
         # Collect experience for a number of steps and store it in the buffer
         with torch.no_grad():
@@ -162,7 +214,6 @@ if __name__ == "__main__":
 
         # Evaluate the network's performance after this training iteration.
         eval_obs = torch.Tensor(test_env.reset()[0])
-        eval_done = False
         with torch.no_grad():
             # Visualize
             reward_total = 0
