@@ -241,7 +241,7 @@ if __name__ == "__main__":
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
             log_dict[f"{agent}_avg_p_loss"] = total_p_loss / cfg.train_iters
 
-        # Evaluate the network's performance after this training iteration.
+        # Evaluate agents
         with torch.no_grad():
             # Visualize
             reward_total = {agent: 0.0 for agent in env.agents}
@@ -253,25 +253,32 @@ if __name__ == "__main__":
                 eval_obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
                 for _ in range(cfg.max_eval_steps):
                     all_actions = {}
+                    all_distrs = {}
                     for agent in env.agents:
                         distr = Categorical(
                             logits=agents[agent].p_net(eval_obs.unsqueeze(0)).squeeze()
                         )
+                        all_distrs[agent] = distr
                         action = distr.sample().item()
                         all_actions[agent] = action
                     obs_, reward, eval_done, _, _ = test_env.step(all_actions)
                     eval_obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
                     steps_taken += 1
-                    reward_total += reward
-                    avg_entropy += distr.entropy()
+                    for agent in env.agents:
+                        reward_total[agent] += reward[agent]
+                        avg_entropy[agent] += all_distrs[agent].entropy()
                     if eval_done:
                         break
                 avg_entropy /= steps_taken
                 entropy_total += avg_entropy
+            for agent in env.agents:
+                log_dict.update(
+                    {
+                        f"{agent}_avg_eval_episode_return": reward_total[agent]
+                        / cfg.eval_steps,
+                        f"{agent}_avg_eval_entropy": entropy_total[agent]
+                        / cfg.eval_steps,
+                    }
+                )
 
-        wandb.log(
-            {
-                "avg_eval_episode_reward": reward_total / cfg.eval_steps,
-                "avg_eval_entropy": entropy_total / cfg.eval_steps,
-            }
-        )
+        wandb.log(log_dict)
