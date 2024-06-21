@@ -4,6 +4,7 @@ from functools import reduce
 from typing import *
 
 import gymnasium as gym
+import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -12,6 +13,7 @@ from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 from torch.distributions import Categorical
 from tqdm import tqdm
 
+from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
 from webgame.algorithms.rollout_buffer import RolloutBuffer
 from webgame.common import process_obs
@@ -175,7 +177,9 @@ if __name__ == "__main__":
         config=cfg.__dict__,
     )
 
-    env = GameEnv(cfg.use_objs)
+    env = ParallelVecWrapper(
+        [lambda: GameEnv(cfg.use_objs) for _ in range(cfg.num_envs)]
+    )
     test_env = GameEnv(cfg.use_objs)
 
     # Initialize policy and value networks
@@ -250,7 +254,9 @@ if __name__ == "__main__":
                 for _ in range(cfg.max_eval_steps):
                     all_actions = {}
                     for agent in env.agents:
-                        distr = Categorical(logits=agents[agent].p_net(eval_obs.unsqueeze(0)).squeeze())
+                        distr = Categorical(
+                            logits=agents[agent].p_net(eval_obs.unsqueeze(0)).squeeze()
+                        )
                         action = distr.sample().item()
                         all_actions[agent] = action
                     obs_, reward, eval_done, _, _ = test_env.step(all_actions)
