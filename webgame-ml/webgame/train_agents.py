@@ -47,6 +47,7 @@ class Config:
     use_objs: bool = False  # Whether we should use objects in the simulation.
     use_pos: bool = False  # Whether we use a position encoding.
     save_every: int = 100  # How many iterations to wait before saving.
+    eval_every: int = 2  # How many iterations before evaluating.
     device: str = "cuda"  # Device to use during training.
 
 
@@ -161,9 +162,16 @@ class AgentData:
 
 
 def convert_obs(
-    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], add_dim: bool = False
 ) -> Tuple[Tensor, Tensor, Tensor]:
     o = process_obs(obs)
+    if add_dim:
+        return (
+            torch.from_numpy(o[0]).float().unsqueeze(0),
+            torch.from_numpy(o[1]).float().unsqueeze(0),
+            torch.from_numpy(o[2]).float().unsqueeze(0),
+        )
+
     return (
         torch.from_numpy(o[0]).float(),
         torch.from_numpy(o[1]).float(),
@@ -280,45 +288,51 @@ if __name__ == "__main__":
             log_dict[f"{agent}_avg_p_loss"] = total_p_loss / cfg.train_iters
 
         # Evaluate agents
-        with torch.no_grad():
-            # Visualize
-            reward_total = {agent: 0.0 for agent in env.agents}
-            entropy_total = {agent: 0.0 for agent in env.agents}
-            for _ in range(cfg.eval_steps):
-                avg_entropy = {agent: 0.0 for agent in env.agents}
-                steps_taken = 0
-                obs_ = test_env.reset()[0]
-                eval_obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
-                for _ in range(cfg.max_eval_steps):
-                    all_actions = {}
-                    all_distrs = {}
-                    for agent in env.agents:
-                        distr = Categorical(
-                            logits=agents[agent].p_net(eval_obs[agent]).squeeze()
-                        )
-                        all_distrs[agent] = distr
-                        action = distr.sample().item()
-                        all_actions[agent] = action
-                    obs_, reward, eval_done, _, _ = test_env.step(all_actions)
-                    eval_obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
-                    steps_taken += 1
-                    for agent in env.agents:
-                        reward_total[agent] += reward[agent]
-                        avg_entropy[agent] += all_distrs[agent].entropy()
-                    if eval_done:
-                        break
-                for agent in env.agents:
-                    avg_entropy[agent] /= steps_taken
-                    entropy_total[agent] += avg_entropy[agent]
-            for agent in env.agents:
-                log_dict.update(
-                    {
-                        f"{agent}_avg_eval_episode_return": reward_total[agent]
-                        / cfg.eval_steps,
-                        f"{agent}_avg_eval_entropy": entropy_total[agent]
-                        / cfg.eval_steps,
+        if step % cfg.eval_every == 0:
+            with torch.no_grad():
+                # Visualize
+                reward_total = {agent: 0.0 for agent in env.agents}
+                entropy_total = {agent: 0.0 for agent in env.agents}
+                for _ in range(cfg.eval_steps):
+                    avg_entropy = {agent: 0.0 for agent in env.agents}
+                    steps_taken = 0
+                    obs_ = test_env.reset()[0]
+                    eval_obs = {
+                        agent: convert_obs(obs_[agent], True) for agent in env.agents
                     }
-                )
+                    for _ in range(cfg.max_eval_steps):
+                        all_actions = {}
+                        all_distrs = {}
+                        for agent in env.agents:
+                            distr = Categorical(
+                                logits=agents[agent].p_net(*eval_obs[agent]).squeeze()
+                            )
+                            all_distrs[agent] = distr
+                            action = distr.sample().item()
+                            all_actions[agent] = action
+                        obs_, reward, eval_done, _, _ = test_env.step(all_actions)
+                        eval_obs = {
+                            agent: convert_obs(obs_[agent], True)
+                            for agent in env.agents
+                        }
+                        steps_taken += 1
+                        for agent in env.agents:
+                            reward_total[agent] += reward[agent]
+                            avg_entropy[agent] += all_distrs[agent].entropy()
+                        if eval_done:
+                            break
+                    for agent in env.agents:
+                        avg_entropy[agent] /= steps_taken
+                        entropy_total[agent] += avg_entropy[agent]
+                for agent in env.agents:
+                    log_dict.update(
+                        {
+                            f"{agent}_avg_eval_episode_return": reward_total[agent]
+                            / cfg.eval_steps,
+                            f"{agent}_avg_eval_entropy": entropy_total[agent]
+                            / cfg.eval_steps,
+                        }
+                    )
 
         wandb.log(log_dict)
 

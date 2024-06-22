@@ -132,17 +132,17 @@ class RolloutBuffer:
             advantages = torch.zeros(
                 [self.num_steps, self.num_envs], dtype=torch.float, device=d
             )
-            step_returns: torch.Tensor = v_net(self.states[self.next]).squeeze()
+            step_returns: torch.Tensor = v_net(*[s[self.next] for s in self.states]).squeeze()
 
             # Calculate advantage estimates and rewards to go
             state_values = step_returns.clone()
             step_advantages = torch.zeros([self.num_envs], dtype=torch.float, device=d)
             for i in reversed(range(self.num_steps)):
-                prev_states = self.states[i]
+                prev_states = [s[i] for s in self.states]
                 rewards = self.rewards[i]
                 inv_dones = 1.0 - self.dones[i]
                 inv_truncs = 1.0 - self.truncs[i]
-                prev_state_values: torch.Tensor = v_net(prev_states).squeeze()
+                prev_state_values: torch.Tensor = v_net(*prev_states).squeeze()
                 # Delta is the difference between the 1 step bootstrap (reward +
                 # value prediction of next state) and the value prediction of
                 # the current state
