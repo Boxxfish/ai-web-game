@@ -49,10 +49,12 @@ class ParallelVecWrapper(pz.ParallelEnv):
                 agent_done_all[agent].append(done[agent])
                 agent_trunc_all[agent].append(trunc[agent])
                 agent_info_all[agent].append(info[agent])
-        if isinstance(agent_obs_all[self.agents[0]][0], np.ndarray):
-            agent_obs_all = {
-                agent: np.stack(obs) for agent, obs in agent_obs_all.items()
-            }
+        agent_obs_all = {
+            agent: ParallelVecWrapper._stack_obs(
+                obs, self.observation_space(self.agents[0])
+            )
+            for agent, obs in agent_obs_all.items()
+        }
         return (
             agent_obs_all,
             agent_rew_all,
@@ -71,9 +73,9 @@ class ParallelVecWrapper(pz.ParallelEnv):
                 agent_info_all[agent].append(info[agent])
         agent_obs_all = {
             agent: ParallelVecWrapper._stack_obs(
-                obs[agent], self.observation_space(self.agents[0])
+                obs, self.observation_space(self.agents[0])
             )
-            for obs in agent_obs_all
+            for agent, obs in agent_obs_all.items()
         }
         return agent_obs_all, agent_info_all
 
@@ -91,7 +93,7 @@ class ParallelVecWrapper(pz.ParallelEnv):
             processed_obs: List[List[Any]] = [[] for _ in range(len(space.spaces))]
             for env_obs in obs:
                 for i in range(len(space.spaces)):
-                    processed_obs[i].append(env_obs)
+                    processed_obs[i].append(env_obs[i])
             for i, sub_space in enumerate(space.spaces):
                 processed_obs[i] = ParallelVecWrapper._stack_obs(
                     processed_obs[i], sub_space

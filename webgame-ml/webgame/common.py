@@ -8,13 +8,26 @@ from webgame.envs import CELL_SIZE
 
 
 def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Works for both batched and unbatched inputs.
+    """
     scalar_obs, grid_obs = obs[:2]
     grid_shape = grid_obs.shape
+    # Add another dim if there's only 2
+    add_dim = len(grid_shape) == 2
+    if add_dim:
+        scalar_obs = scalar_obs[np.newaxis, ...]
+        grid_obs = grid_obs[np.newaxis, ...]
+        grid_shape = grid_obs.shape
     scalar_obs = np.tile(
-        scalar_obs[..., np.newaxis, np.newaxis], [1] + list(grid_shape)
+        scalar_obs[..., np.newaxis, np.newaxis], [1, 1] + list(grid_shape)[-2:]
     )
-    grid_obs = grid_obs[np.newaxis, ...]
-    return np.concatenate([scalar_obs, grid_obs], 0), obs[2], obs[3]
+    grid_obs = grid_obs[:, np.newaxis, :, :]
+    combined = np.concatenate([scalar_obs, grid_obs], 1)
+    # If we added another dim, remove it
+    if add_dim:
+        combined = combined.squeeze(0)
+    return combined, obs[2], obs[3]
 
 
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:

@@ -29,12 +29,10 @@ _: Any
 
 @dataclass
 class Config:
-    out_dir: str = "./runs" # Output directory.
-    num_envs: int = (
-        256  # Number of environments to step through at once during sampling.
-    )
+    out_dir: str = "./runs"  # Output directory.
+    num_envs: int = 4  # Number of environments to step through at once during sampling.
     train_steps: int = (
-        128  # Number of steps to step through during sampling. Total # of samples is train_steps * num_envs/
+        4  # Number of steps to step through during sampling. Total # of samples is train_steps * num_envs/
     )
     iterations: int = 1000  # Number of sample/train iterations.
     train_iters: int = 2  # Number of passes over the samples collected.
@@ -48,7 +46,7 @@ class Config:
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
     use_pos: bool = False  # Whether we use a position encoding.
-    save_every: int = 100 # How many iterations to wait before saving.
+    save_every: int = 100  # How many iterations to wait before saving.
     device: str = "cuda"  # Device to use during training.
 
 
@@ -162,6 +160,17 @@ class AgentData:
         )
 
 
+def convert_obs(
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+) -> Tuple[Tensor, Tensor, Tensor]:
+    o = process_obs(obs)
+    return (
+        torch.from_numpy(o[0]).float(),
+        torch.from_numpy(o[1]).float(),
+        torch.from_numpy(o[2]).float(),
+    )
+
+
 if __name__ == "__main__":
     cfg = Config()
     parser = ArgumentParser()
@@ -176,16 +185,14 @@ if __name__ == "__main__":
     cfg = Config(**args.__dict__)
     device = torch.device(cfg.device)
 
-    wandb_cfg = {
-        "experiment": "agents"
-    }
+    wandb_cfg = {"experiment": "agents"}
     wandb_cfg.update(cfg.__dict__)
     wandb.init(
         project="pursuer",
         entity=entity,
         config=wandb_cfg,
     )
-    
+
     assert wandb.run is not None
     for _ in range(100):
         if wandb.run.name != "":
@@ -212,7 +219,7 @@ if __name__ == "__main__":
     test_env = GameEnv(cfg.use_objs)
 
     # Initialize policy and value networks
-    channels = 7 + 2
+    channels = 8
     grid_size = 8
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
@@ -223,8 +230,10 @@ if __name__ == "__main__":
         for agent in env.agents
     }
 
-    obs_: Mapping[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = env.reset()[0]
-    obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
+    obs_: Mapping[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = (
+        env.reset()[0]
+    )
+    obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
     for step in tqdm(range(cfg.iterations), position=0):
         # Collect experience for a number of steps and store it in the buffer
         with torch.no_grad():
@@ -232,21 +241,21 @@ if __name__ == "__main__":
                 all_action_probs = {}
                 all_actions = {}
                 for agent in env.agents:
-                    action_probs = agents[agent].p_net(obs[agent])
+                    action_probs = agents[agent].p_net(*obs[agent])
                     actions = Categorical(logits=action_probs).sample().numpy()
                     all_action_probs[agent] = action_probs
                     all_actions[agent] = actions
                 obs_, rewards, dones, truncs, _ = env.step(all_actions)
                 for agent in env.agents:
                     agents[agent].buffer.insert_step(
-                        list(obs),
+                        list(obs[agent]),
                         torch.from_numpy(all_actions[agent]).unsqueeze(-1),
-                        action_probs[agent],
+                        all_action_probs[agent],
                         rewards[agent],
                         dones[agent],
                         truncs[agent],
                     )
-                obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
+                obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
             for agent in env.agents:
                 agents[agent].buffer.insert_final_step(list(obs[agent]))
 
@@ -279,19 +288,19 @@ if __name__ == "__main__":
                 avg_entropy = {agent: 0.0 for agent in env.agents}
                 steps_taken = 0
                 obs_ = test_env.reset()[0]
-                eval_obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
+                eval_obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
                 for _ in range(cfg.max_eval_steps):
                     all_actions = {}
                     all_distrs = {}
                     for agent in env.agents:
                         distr = Categorical(
-                            logits=agents[agent].p_net(process_obs(eval_obs[agent])).squeeze()
+                            logits=agents[agent].p_net(eval_obs[agent]).squeeze()
                         )
                         all_distrs[agent] = distr
                         action = distr.sample().item()
                         all_actions[agent] = action
                     obs_, reward, eval_done, _, _ = test_env.step(all_actions)
-                    eval_obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
+                    eval_obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
                     steps_taken += 1
                     for agent in env.agents:
                         reward_total[agent] += reward[agent]
@@ -315,5 +324,11 @@ if __name__ == "__main__":
 
         if step % cfg.save_every == 0:
             for agent in env.agents:
-                save_model(agents[agent].p_net, str(chkpt_path / f"{agent}-p_net-{step}.safetensors"))
-                save_model(agents[agent].v_net, str(chkpt_path / f"{agent}-b_net-{step}.safetensors"))
+                save_model(
+                    agents[agent].p_net,
+                    str(chkpt_path / f"{agent}-p_net-{step}.safetensors"),
+                )
+                save_model(
+                    agents[agent].v_net,
+                    str(chkpt_path / f"{agent}-b_net-{step}.safetensors"),
+                )

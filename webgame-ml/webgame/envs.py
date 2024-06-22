@@ -22,7 +22,7 @@ class GameEnv(pettingzoo.ParallelEnv):
     An environment that wraps an instance of our game.
 
     Agents: pursuer, player
-    
+
     Observation Space: A tuple, where the first item is a vector of the following form:
 
         0: This agent's x coordinate, normalized between 0 and 1
@@ -42,7 +42,12 @@ class GameEnv(pettingzoo.ParallelEnv):
         visualize: If we should log visuals to Rerun.
     """
 
-    def __init__(self, use_objs: bool = False, visualize: bool = False, recording_id: Optional[str] = None):
+    def __init__(
+        self,
+        use_objs: bool = False,
+        visualize: bool = False,
+        recording_id: Optional[str] = None,
+    ):
         self.game = GameWrapper(use_objs, visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
@@ -79,9 +84,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         }
         return (obs, rewards, dones, truncs, infos)
 
-    def reset(
-        self, *args
-    ) -> tuple[Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]], Mapping[str, None]]:
+    def reset(self, *args) -> tuple[
+        Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        Mapping[str, None],
+    ]:
         self.game_state = self.game.reset()
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
@@ -106,15 +112,15 @@ class GameEnv(pettingzoo.ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, _agent: str) -> gym.Space:
         return gym.spaces.Discrete(10)
-    
+
     @functools.lru_cache(maxsize=None)
     def observation_space(self, _: str) -> gym.Space:
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (self.level_size, self.level_size)),
+                gym.spaces.Box(0, 1, (8, 8)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
-                gym.spaces.Box(0, 1, (MAX_OBJS,))
+                gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )
         )
 
@@ -148,8 +154,12 @@ class GameEnv(pettingzoo.ParallelEnv):
             if e in agent_state.vm_data:
                 obs_obj = game_state.objects[e]
                 obj_features = np.zeros([OBJ_DIM])
-                obj_features[0] = 0.5 + obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
-                obj_features[1] = 0.5 + obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
+                obj_features[0] = 0.5 + obs_obj.pos.x / (
+                    game_state.level_size * CELL_SIZE
+                )
+                obj_features[1] = 0.5 + obs_obj.pos.y / (
+                    game_state.level_size * CELL_SIZE
+                )
                 obj_features[2] = 1
                 vm_data = agent_state.vm_data[e]
                 obj_features[5] = vm_data.last_seen_elapsed / 10.0
@@ -166,7 +176,7 @@ class GameEnv(pettingzoo.ParallelEnv):
             obs_vecs[i + len(agent_state.observing)] = obj_features
 
         attn_mask = np.zeros([MAX_OBJS])
-        attn_mask[len(agent_state.observing) + len(agent_state.listening):] = 1
+        attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
         return (obs_vec, walls, obs_vecs, attn_mask)
 
