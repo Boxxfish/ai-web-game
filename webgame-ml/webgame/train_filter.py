@@ -279,7 +279,7 @@ def main() -> None:
     wandb.init(project="pursuer", config=wandb_config)
 
     assert wandb.run is not None
-    while wandb.run.name is None:
+    while wandb.run.name != "":
         pass
     out_id = wandb.run.name
 

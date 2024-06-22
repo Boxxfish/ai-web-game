@@ -63,7 +63,7 @@ class RolloutBuffer:
 
     def insert_step(
         self,
-        states: torch.Tensor,
+        states: List[torch.Tensor],
         actions: torch.Tensor,
         action_probs: torch.Tensor,
         rewards: List[float],
@@ -79,7 +79,8 @@ class RolloutBuffer:
         """
         d = torch.device("cpu")
         with torch.no_grad():
-            self.states[self.next].copy_(states)
+            for i in range(len(self.states)):
+                self.states[i][self.next].copy_(states[i])
             self.actions[self.next].copy_(actions)
             self.action_probs[self.next].copy_(action_probs)
             self.rewards[self.next].copy_(
@@ -98,12 +99,13 @@ class RolloutBuffer:
 
         self.next += 1
 
-    def insert_final_step(self, states: torch.Tensor):
+    def insert_final_step(self, states: List[torch.Tensor]):
         """
         Inserts the final observation observed.
         """
         with torch.no_grad():
-            self.states[self.next].copy_(states)
+            for i in range(len(self.states)):
+                self.states[i][self.next].copy_(states[i])
 
     def samples(
         self, batch_size: int, discount: float, lambda_: float, v_net: nn.Module

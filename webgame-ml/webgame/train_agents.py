@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from functools import reduce
+import os
+from pathlib import Path
 from typing import *
 
 import gymnasium as gym
@@ -12,6 +14,7 @@ import wandb
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 from torch.distributions import Categorical
 from tqdm import tqdm
+from safetensors.torch import save_model
 
 from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
@@ -26,6 +29,7 @@ _: Any
 
 @dataclass
 class Config:
+    out_dir: str = "./runs" # Output directory.
     num_envs: int = (
         256  # Number of environments to step through at once during sampling.
     )
@@ -44,6 +48,7 @@ class Config:
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
     use_pos: bool = False  # Whether we use a position encoding.
+    save_every: int = 100 # How many iterations to wait before saving.
     device: str = "cuda"  # Device to use during training.
 
 
@@ -163,7 +168,7 @@ if __name__ == "__main__":
     for k, v in cfg.__dict__.items():
         if isinstance(v, bool):
             parser.add_argument(
-                f"--{k.replace('_', '-')}", default=v, type=type(v), action="store_true"
+                f"--{k.replace('_', '-')}", default=v, action="store_true"
             )
         else:
             parser.add_argument(f"--{k.replace('_', '-')}", default=v, type=type(v))
@@ -171,11 +176,35 @@ if __name__ == "__main__":
     cfg = Config(**args.__dict__)
     device = torch.device(cfg.device)
 
+    wandb_cfg = {
+        "experiment": "agents"
+    }
+    wandb_cfg.update(cfg.__dict__)
     wandb.init(
         project="pursuer",
         entity=entity,
-        config=cfg.__dict__,
+        config=wandb_cfg,
     )
+    
+    assert wandb.run is not None
+    for _ in range(100):
+        if wandb.run.name != "":
+            break
+    if wandb.run.name != "":
+        out_id = wandb.run.name
+    else:
+        out_id = "testing"
+
+    out_dir = Path(cfg.out_dir)
+    try:
+        os.mkdir(out_dir / out_id)
+    except OSError as e:
+        print(e)
+    chkpt_path = out_dir / out_id / "checkpoints"
+    try:
+        os.mkdir(chkpt_path)
+    except OSError as e:
+        print(e)
 
     env = ParallelVecWrapper(
         [lambda: GameEnv(cfg.use_objs) for _ in range(cfg.num_envs)]
@@ -187,30 +216,30 @@ if __name__ == "__main__":
     grid_size = 8
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
-    act_space = env.action_space
+    act_space = env.action_space(env.agents[0])
     assert isinstance(act_space, gym.spaces.Discrete)
     agents = {
         agent: AgentData(channels, grid_size, max_objs, obj_dim, cfg, int(act_space.n))
         for agent in env.agents
     }
 
-    obs_ = env.reset()[0]
+    obs_: Mapping[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = env.reset()[0]
     obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
-    for _ in tqdm(range(cfg.iterations), position=0):
+    for step in tqdm(range(cfg.iterations), position=0):
         # Collect experience for a number of steps and store it in the buffer
         with torch.no_grad():
             for _ in tqdm(range(cfg.train_steps), position=1):
                 all_action_probs = {}
                 all_actions = {}
                 for agent in env.agents:
-                    action_probs = agents[agent].p_net(obs)
+                    action_probs = agents[agent].p_net(obs[agent])
                     actions = Categorical(logits=action_probs).sample().numpy()
                     all_action_probs[agent] = action_probs
                     all_actions[agent] = actions
                 obs_, rewards, dones, truncs, _ = env.step(all_actions)
                 for agent in env.agents:
                     agents[agent].buffer.insert_step(
-                        obs,
+                        list(obs),
                         torch.from_numpy(all_actions[agent]).unsqueeze(-1),
                         action_probs[agent],
                         rewards[agent],
@@ -219,7 +248,7 @@ if __name__ == "__main__":
                     )
                 obs = {agent: process_obs(obs_[agent]) for agent in env.agents}
             for agent in env.agents:
-                agents[agent].buffer.insert_final_step(obs[agent])
+                agents[agent].buffer.insert_final_step(list(obs[agent]))
 
         # Train
         log_dict = {}
@@ -256,7 +285,7 @@ if __name__ == "__main__":
                     all_distrs = {}
                     for agent in env.agents:
                         distr = Categorical(
-                            logits=agents[agent].p_net(eval_obs.unsqueeze(0)).squeeze()
+                            logits=agents[agent].p_net(process_obs(eval_obs[agent])).squeeze()
                         )
                         all_distrs[agent] = distr
                         action = distr.sample().item()
@@ -269,8 +298,9 @@ if __name__ == "__main__":
                         avg_entropy[agent] += all_distrs[agent].entropy()
                     if eval_done:
                         break
-                avg_entropy /= steps_taken
-                entropy_total += avg_entropy
+                for agent in env.agents:
+                    avg_entropy[agent] /= steps_taken
+                    entropy_total[agent] += avg_entropy[agent]
             for agent in env.agents:
                 log_dict.update(
                     {
@@ -282,3 +312,8 @@ if __name__ == "__main__":
                 )
 
         wandb.log(log_dict)
+
+        if step % cfg.save_every == 0:
+            for agent in env.agents:
+                save_model(agents[agent].p_net, str(chkpt_path / f"{agent}-p_net-{step}.safetensors"))
+                save_model(agents[agent].v_net, str(chkpt_path / f"{agent}-b_net-{step}.safetensors"))
