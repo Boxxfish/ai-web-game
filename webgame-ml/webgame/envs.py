@@ -45,6 +45,7 @@ class GameEnv(pettingzoo.ParallelEnv):
     def __init__(
         self,
         use_objs: bool = False,
+        max_timer: Optional[int] = None,
         visualize: bool = False,
         recording_id: Optional[str] = None,
     ):
@@ -52,6 +53,8 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]
+        self.timer = 0
+        self.max_timer = max_timer
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -66,17 +69,27 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.game_state = self.game.step(all_actions[0], all_actions[1])
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
+
+        # Check if pursuer can see player
+        player_e, _ = list(
+            filter(lambda t: t[1].obj_type == "player", self.game_state.objects.items())
+        )[0]
+        seen_player = player_e in self.game_state.pursuer.observing
+
+        self.timer += 1
+        trunc = self.timer == self.max_timer
+
         rewards = {
-            "player": 0.0,
-            "pursuer": 0.0,
+            "player": -float(seen_player),
+            "pursuer": float(seen_player),
         }
         dones = {
             "player": False,
             "pursuer": False,
         }
         truncs = {
-            "player": False,
-            "pursuer": False,
+            "player": trunc,
+            "pursuer": trunc,
         }
         infos = {
             "player": None,
@@ -90,6 +103,7 @@ class GameEnv(pettingzoo.ParallelEnv):
     ]:
         self.game_state = self.game.reset()
         assert self.game_state
+        self.timer = 0
         obs = self.game_state_to_obs(self.game_state)
         infos = {
             "player": None,

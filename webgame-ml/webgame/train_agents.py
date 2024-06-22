@@ -46,6 +46,7 @@ class Config:
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
     use_pos: bool = False  # Whether we use a position encoding.
+    max_timer: int = 100  # Maximum length of an episode.
     save_every: int = 100  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
     device: str = "cuda"  # Device to use during training.
@@ -222,9 +223,12 @@ if __name__ == "__main__":
         print(e)
 
     env = ParallelVecWrapper(
-        [lambda: GameEnv(cfg.use_objs) for _ in range(cfg.num_envs)]
+        [
+            lambda: GameEnv(cfg.use_objs, max_timer=cfg.max_timer)
+            for _ in range(cfg.num_envs)
+        ]
     )
-    test_env = GameEnv(cfg.use_objs)
+    test_env = GameEnv(cfg.use_objs, max_timer=cfg.max_timer)
 
     # Initialize policy and value networks
     channels = 8
