@@ -49,6 +49,7 @@ class Config:
     max_timer: int = 100  # Maximum length of an episode.
     save_every: int = 100  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
+    wall_prob: float = 0.1 # Probability of a cell containing a wall.
     device: str = "cuda"  # Device to use during training.
 
 
@@ -224,7 +225,7 @@ if __name__ == "__main__":
 
     env = ParallelVecWrapper(
         [
-            lambda: GameEnv(cfg.use_objs, max_timer=cfg.max_timer)
+            lambda: GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer)
             for _ in range(cfg.num_envs)
         ]
     )

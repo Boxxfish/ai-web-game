@@ -6,7 +6,8 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{
-        Agent, LevelLayout, MaxItems, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE
+        Agent, LevelLayout, MaxItems, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
+        GRID_CELL_SIZE,
     },
     observer::{Observable, Observer},
     world_objs::NoiseSource,
@@ -127,6 +128,7 @@ impl<'source> FromPyObject<'source> for AgentAction {
 pub struct GameWrapper {
     pub app: App,
     pub use_objs: bool,
+    pub wall_prob: f32,
     pub visualize: bool,
     pub recording_id: Option<String>,
 }
@@ -134,9 +136,15 @@ pub struct GameWrapper {
 #[pymethods]
 impl GameWrapper {
     #[new]
-    pub fn new(use_objs: bool, visualize: bool, recording_id: Option<String>) -> Self {
+    pub fn new(
+        use_objs: bool,
+        wall_prob: f32,
+        visualize: bool,
+        recording_id: Option<String>,
+    ) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
+        app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, wall_prob));
 
         if use_objs {
             app.insert_resource(MaxItems(DEFAULT_LEVEL_SIZE));
@@ -157,6 +165,7 @@ impl GameWrapper {
             visualize,
             recording_id,
             use_objs,
+            wall_prob,
         }
     }
 
@@ -172,7 +181,12 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(AppExit);
         self.app.run();
-        *self = Self::new(self.use_objs, self.visualize, self.recording_id.clone());
+        *self = Self::new(
+            self.use_objs,
+            self.wall_prob,
+            self.visualize,
+            self.recording_id.clone(),
+        );
         self.get_state()
     }
 }
@@ -375,7 +389,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false, false, None)
+        Self::new(false, 0.1, false, None)
     }
 }
 

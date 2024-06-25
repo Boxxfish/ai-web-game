@@ -4,7 +4,7 @@ use bevy::{
 };
 use bevy_rapier2d::{
     control::KinematicCharacterController,
-    dynamics::{Damping, GravityScale, LockedAxes, RigidBody},
+    dynamics::{Damping, LockedAxes, RigidBody},
     geometry::Collider,
 };
 use rand::{seq::IteratorRandom, Rng};
@@ -19,8 +19,7 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE))
-            .add_systems(Startup, (setup_entities, setup_entities_playable))
+        app.add_systems(Startup, (setup_entities, setup_entities_playable))
             .add_systems(
                 Update,
                 (
@@ -56,7 +55,7 @@ pub struct LevelLayout {
 
 impl LevelLayout {
     /// Generates a randomized level.
-    pub fn random(size: usize) -> Self {
+    pub fn random(size: usize, wall_prob: f32) -> Self {
         let mut rng = rand::thread_rng();
         Self {
             walls: (0..(size * size)).map(|_| rng.gen_bool(0.1)).collect(),
