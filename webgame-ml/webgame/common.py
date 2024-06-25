@@ -4,8 +4,6 @@ from typing import *
 import numpy as np
 from webgame_rust import GameState
 
-from webgame.envs import CELL_SIZE
-
 
 def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -22,7 +20,6 @@ def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> T
     scalar_obs = np.tile(
         scalar_obs[..., np.newaxis, np.newaxis], [1, 1] + list(grid_shape)[-2:]
     )
-    grid_obs = grid_obs[:, np.newaxis, :, :]
     combined = np.concatenate([scalar_obs, grid_obs], 1)
     # If we added another dim, remove it
     if add_dim:
@@ -41,6 +38,7 @@ DIRS = [
 ]
 
 def explore_policy(game_state: GameState, is_pursuer: bool) -> int:
+    from webgame.envs import CELL_SIZE
     if is_pursuer:
         agent_state = game_state.pursuer
         other_state = game_state.player

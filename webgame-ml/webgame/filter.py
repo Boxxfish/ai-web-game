@@ -7,7 +7,6 @@ from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
 from webgame.common import explore_policy, pos_to_grid, process_obs
-from webgame.envs import CELL_SIZE, GameEnv
 
 from torch import nn
 
@@ -145,7 +144,7 @@ def model_update(
 
 
 if __name__ == "__main__":
-    from webgame.envs import GameEnv
+    from webgame.envs import GameEnv, CELL_SIZE
     import rerun as rr  # type: ignore
     import random
     from argparse import ArgumentParser

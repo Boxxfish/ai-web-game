@@ -8,6 +8,9 @@ from webgame_rust import AgentState, GameWrapper, GameState
 import numpy as np
 import functools
 
+from webgame.common import process_obs
+from webgame.filter import BayesFilter
+
 # The maximum number of object vectors supported by the environment.
 MAX_OBJS = 16
 # The dimension of each object vector.
@@ -49,6 +52,19 @@ class GameEnv(pettingzoo.ParallelEnv):
         max_timer: Optional[int] = None,
         visualize: bool = False,
         recording_id: Optional[str] = None,
+        update_fn: Optional[
+            Callable[
+                [
+                    Tuple[np.ndarray, np.ndarray, np.ndarray],
+                    bool,
+                    GameState,
+                    AgentState,
+                    int,
+                    float,
+                ],
+                np.ndarray,
+            ]
+        ] = None,
     ):
         self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -56,6 +72,9 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.agents = self.possible_agents[:]
         self.timer = 0
         self.max_timer = max_timer
+        self.use_objs = use_objs
+        self.update_fn = update_fn
+        self.filter: Optional[BayesFilter] = None
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -105,6 +124,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.game_state = self.game.reset()
         assert self.game_state
         self.timer = 0
+        if self.update_fn:
+            self.filter = BayesFilter(
+                self.game_state.level_size, CELL_SIZE, self.update_fn, self.use_objs
+            )
         obs = self.game_state_to_obs(self.game_state)
         infos = {
             "player": None,
@@ -133,7 +156,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (8, 8)),
+                gym.spaces.Box(0, 1, (2, 8, 8)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )
@@ -193,7 +216,23 @@ class GameEnv(pettingzoo.ParallelEnv):
         attn_mask = np.zeros([MAX_OBJS])
         attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
-        return (obs_vec, walls, obs_vecs, attn_mask)
+        filter_probs = np.zeros(walls.shape, dtype=float)
+        if self.filter:
+            filter_probs = self.filter.localize(
+                process_obs(
+                    (
+                        obs_vec,
+                        np.stack([walls, filter_probs]),
+                        obs_vec,
+                        attn_mask,
+                    )
+                ),
+                game_state,
+                agent_state,
+            )
+        grid = np.stack([walls, filter_probs])
+
+        return (obs_vec, grid, obs_vecs, attn_mask)
 
 
 if __name__ == "__main__":
