@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    gridworld::{GridworldPlayPlugin, GridworldPlugin},
+    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLayout, DEFAULT_LEVEL_SIZE},
     net::NetPlugin,
     observer::{ObserverPlayPlugin, ObserverPlugin},
     world_objs::WorldObjPlugin,
@@ -56,7 +56,8 @@ pub struct ReleaseCfgPlugin;
 
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PlayablePlugin, CoreGamePlugin));
+        app.add_plugins((PlayablePlugin, CoreGamePlugin))
+        .insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, 0.1));
     }
 }
 
