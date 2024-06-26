@@ -3,14 +3,15 @@ import numpy as np
 from scipy import signal  # type: ignore
 
 import torch
+from torch.distributions import Categorical
 from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
-from webgame.common import explore_policy, pos_to_grid, process_obs
+from webgame.common import convert_obs, explore_policy, pos_to_grid, process_obs
 
+import gymnasium as gym
 from torch import nn
-
-from webgame.models import MeasureModel
+from webgame.models import MeasureModel, PolicyNet
 
 
 class BayesFilter:
@@ -55,7 +56,13 @@ class BayesFilter:
         """
         self.belief = self.predict(self.belief)
         lkhd = self.update_fn(
-            obs, self.use_objs, game_state, agent_state, self.size, self.cell_size, self.is_pursuer
+            obs,
+            self.use_objs,
+            game_state,
+            agent_state,
+            self.size,
+            self.cell_size,
+            self.is_pursuer,
         )
         self.belief = lkhd * self.belief
         self.belief = self.belief / self.belief.sum()
@@ -168,14 +175,43 @@ def gt_update(
 
 
 if __name__ == "__main__":
-    from webgame.envs import GameEnv, CELL_SIZE
+    from webgame.envs import GameEnv, CELL_SIZE, MAX_OBJS, OBJ_DIM
     import rerun as rr  # type: ignore
     import random
     from argparse import ArgumentParser
 
+    def heuristic_policy(
+        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    ) -> int:
+        if random.random() < 0.1:
+            action = env.action_space(agent).sample()
+        else:
+            assert env.game_state
+            action = explore_policy(env.game_state, agent == "pursuer")
+        return action
+
+
+    def model_policy(
+        chkpt_path: str, action_count: int, use_pos: bool, use_objs: bool,
+    ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
+        p_net = PolicyNet(9, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None)
+        load_model(p_net, chkpt_path)
+
+        def policy(
+            agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        ) -> int:
+            action_probs = p_net(*obs).squeeze(0)
+            action = Categorical(logits=action_probs).sample().item()
+            return action
+
+        return policy
+
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--pursuer-chkpt", type=str, default=None)
+    parser.add_argument("--player-chkpt", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
+    parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
     args = parser.parse_args()
@@ -184,11 +220,15 @@ if __name__ == "__main__":
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
 
-    env = GameEnv(wall_prob=args.wall_prob, visualize=True, recording_id=recording_id)
-    env.reset()
+    env = GameEnv(wall_prob=args.wall_prob, use_objs=args.use_objs, visualize=True, recording_id=recording_id)
+    obs_ = env.reset()[0]
+    obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
 
     action_space = env.action_space("pursuer")  # Same for both agents
+    assert isinstance(action_space, gym.spaces.Discrete)
     assert env.game_state is not None
+
+    # Set up filter
     if args.checkpoint:
         model = MeasureModel(9, env.game_state.level_size, args.use_pos)
         load_model(model, args.checkpoint)
@@ -198,22 +238,31 @@ if __name__ == "__main__":
     else:
         update_fn = manual_update
     b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False, True)
+
+    # Set up policies
+    policies = {}
+    chkpts = {"pursuer": args.pursuer_chkpt, "player": args.player_chkpt}
+    for agent in env.agents:
+        if chkpts[agent]:
+            policies[agent] = model_policy(
+                chkpts[agent], int(action_space.n), args.use_pos, args.use_objs
+            )
+        else:
+            policies[agent] = heuristic_policy
+
     for _ in range(100):
         actions = {}
         for agent in env.agents:
-            if random.random() < 0.1:
-                action = action_space.sample()
-            else:
-                action = explore_policy(env.game_state, agent == "pursuer")
+            action = policies[agent](agent, env, obs[agent])
             actions[agent] = action
-        obs = process_obs(env.step(actions)[0]["pursuer"])
+        obs = {agent: convert_obs(env.step(actions)[0][agent], True) for agent in env.agents}
 
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
         lkhd = update_fn(
-            obs, False, game_state, agent_state, game_state.level_size, CELL_SIZE, True
+            tuple([o.numpy() for o in obs["pursuer"]]), False, game_state, agent_state, game_state.level_size, CELL_SIZE, True
         )
-        probs = b_filter.localize(obs, game_state, agent_state)
+        probs = b_filter.localize(tuple([o.numpy() for o in obs["pursuer"]]), game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)

@@ -19,11 +19,11 @@ from safetensors.torch import save_model, load_model
 from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
 from webgame.algorithms.rollout_buffer import RolloutBuffer
-from webgame.common import process_obs
+from webgame.common import convert_obs, process_obs
 from webgame.conf import entity
 from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
 from webgame.filter import gt_update, manual_update, model_update
-from webgame.models import Backbone, MeasureModel
+from webgame.models import Backbone, MeasureModel, PolicyNet
 
 _: Any
 
@@ -31,9 +31,9 @@ _: Any
 @dataclass
 class Config:
     out_dir: str = "./runs"  # Output directory.
-    num_envs: int = 4  # Number of environments to step through at once during sampling.
+    num_envs: int = 64  # Number of environments to step through at once during sampling.
     train_steps: int = (
-        4  # Number of steps to step through during sampling. Total # of samples is train_steps * num_envs/
+        32  # Number of steps to step through during sampling. Total # of samples is train_steps * num_envs/
     )
     iterations: int = 1000  # Number of sample/train iterations.
     train_iters: int = 2  # Number of passes over the samples collected.
@@ -48,11 +48,11 @@ class Config:
     use_objs: bool = False  # Whether we should use objects in the simulation.
     use_pos: bool = False  # Whether we use a position encoding.
     max_timer: int = 100  # Maximum length of an episode.
-    save_every: int = 100  # How many iterations to wait before saving.
+    save_every: int = 10  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     update_fn: str = (
-        "manual"  # The filter's update function. Valid choices: manual, model, gt
+        "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
     update_chkpt: str = ""  # Checkpoint to use for filter.
     device: str = "cuda"  # Device to use during training.
@@ -92,43 +92,6 @@ class ValueNet(nn.Module):
         values = self.net(features)
         return values
 
-
-class PolicyNet(nn.Module):
-    def __init__(
-        self,
-        channels: int,
-        size: int,
-        action_count: int,
-        use_pos: bool = False,
-        objs_shape: Optional[Tuple[int, int]] = None,
-    ):
-        super().__init__()
-        proj_dim = 32
-        self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
-        self.net = nn.Sequential(
-            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
-            nn.SiLU(),
-            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
-            nn.SiLU(),
-            nn.Flatten(),
-            nn.Linear(size**2 * 16, 256),
-            nn.SiLU(),
-            nn.Linear(256, 256),
-            nn.SiLU(),
-            nn.Linear(256, action_count),
-        )
-
-    def forward(
-        self,
-        grid: Tensor,  # Shape: (batch_size, channels, size, size)
-        objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
-        objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
-    ) -> Tensor:
-        features = self.backbone(grid, objs, objs_attn_mask)
-        values = self.net(features)
-        return values
-
-
 class AgentData:
     def __init__(
         self,
@@ -166,24 +129,6 @@ class AgentData:
             cfg.num_envs,
             cfg.train_steps,
         )
-
-
-def convert_obs(
-    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], add_dim: bool = False
-) -> Tuple[Tensor, Tensor, Tensor]:
-    o = process_obs(obs)
-    if add_dim:
-        return (
-            torch.from_numpy(o[0]).float().unsqueeze(0),
-            torch.from_numpy(o[1]).float().unsqueeze(0),
-            torch.from_numpy(o[2]).float().unsqueeze(0),
-        )
-
-    return (
-        torch.from_numpy(o[0]).float(),
-        torch.from_numpy(o[1]).float(),
-        torch.from_numpy(o[2]).float(),
-    )
 
 
 if __name__ == "__main__":
@@ -246,10 +191,10 @@ if __name__ == "__main__":
             for _ in range(cfg.num_envs)
         ]
     )
-    test_env = GameEnv(cfg.use_objs, max_timer=cfg.max_timer)
+    test_env = GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer)
 
     # Initialize policy and value networks
-    channels = 8
+    channels = 9
     grid_size = 8
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
@@ -366,5 +311,5 @@ if __name__ == "__main__":
                 )
                 save_model(
                     agents[agent].v_net,
-                    str(chkpt_path / f"{agent}-b_net-{step}.safetensors"),
+                    str(chkpt_path / f"{agent}-v_net-{step}.safetensors"),
                 )

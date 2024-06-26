@@ -2,6 +2,8 @@ import math
 import random
 from typing import *
 import numpy as np
+from torch import Tensor
+import torch
 from webgame_rust import GameState
 
 
@@ -85,3 +87,20 @@ def explore_policy(game_state: GameState, is_pursuer: bool) -> int:
     if len(valid_actions) == 0:
         return 0
     return random.choice(valid_actions)
+
+def convert_obs(
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], add_dim: bool = False
+) -> Tuple[Tensor, Tensor, Tensor]:
+    o = process_obs(obs)
+    if add_dim:
+        return (
+            torch.from_numpy(o[0]).float().unsqueeze(0),
+            torch.from_numpy(o[1]).float().unsqueeze(0),
+            torch.from_numpy(o[2]).float().unsqueeze(0),
+        )
+
+    return (
+        torch.from_numpy(o[0]).float(),
+        torch.from_numpy(o[1]).float(),
+        torch.from_numpy(o[2]).float(),
+    )

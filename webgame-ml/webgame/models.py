@@ -167,3 +167,38 @@ class MeasureModel(nn.Module):
         return self.out_net(grid_features).squeeze(
             1
         )  # Shape: (batch_size, grid_size, grid_size)
+
+class PolicyNet(nn.Module):
+    def __init__(
+        self,
+        channels: int,
+        size: int,
+        action_count: int,
+        use_pos: bool = False,
+        objs_shape: Optional[Tuple[int, int]] = None,
+    ):
+        super().__init__()
+        proj_dim = 32
+        self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
+        self.net = nn.Sequential(
+            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
+            nn.SiLU(),
+            nn.Flatten(),
+            nn.Linear(size**2 * 16, 256),
+            nn.SiLU(),
+            nn.Linear(256, 256),
+            nn.SiLU(),
+            nn.Linear(256, action_count),
+        )
+
+    def forward(
+        self,
+        grid: Tensor,  # Shape: (batch_size, channels, size, size)
+        objs: Optional[Tensor],  # Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
+    ) -> Tensor:
+        features = self.backbone(grid, objs, objs_attn_mask)
+        values = self.net(features)
+        return values
