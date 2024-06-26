@@ -51,6 +51,7 @@ class Config:
     save_every: int = 10  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
+    entropy_coeff: float = 0.001  # Probability of a cell containing a wall.
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
@@ -249,6 +250,7 @@ if __name__ == "__main__":
                 cfg.discount,
                 cfg.lambda_,
                 cfg.epsilon,
+                entropy_coeff=cfg.entropy_coeff,
             )
             agents[agent].buffer.clear()
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
