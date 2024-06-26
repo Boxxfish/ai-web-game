@@ -2,19 +2,31 @@ import math
 import random
 from typing import *
 import numpy as np
+from torch import Tensor
+import torch
 from webgame_rust import GameState
-
-from webgame.envs import CELL_SIZE
 
 
 def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Works for both batched and unbatched inputs.
+    """
     scalar_obs, grid_obs = obs[:2]
     grid_shape = grid_obs.shape
+    # Add another dim if there's only 3
+    add_dim = len(grid_shape) == 3
+    if add_dim:
+        scalar_obs = scalar_obs[np.newaxis, ...]
+        grid_obs = grid_obs[np.newaxis, ...]
+        grid_shape = grid_obs.shape
     scalar_obs = np.tile(
-        scalar_obs[..., np.newaxis, np.newaxis], [1] + list(grid_shape)
+        scalar_obs[..., np.newaxis, np.newaxis], [1, 1] + list(grid_shape)[-2:]
     )
-    grid_obs = grid_obs[np.newaxis, ...]
-    return np.concatenate([scalar_obs, grid_obs], 0), obs[2], obs[3]
+    combined = np.concatenate([scalar_obs, grid_obs], 1)
+    # If we added another dim, remove it
+    if add_dim:
+        combined = combined.squeeze(0)
+    return combined, obs[2], obs[3]
 
 
 def pos_to_grid(x: float, y: float, size: int, cell_size: float) -> Tuple[int, int]:
@@ -28,6 +40,7 @@ DIRS = [
 ]
 
 def explore_policy(game_state: GameState, is_pursuer: bool) -> int:
+    from webgame.envs import CELL_SIZE
     if is_pursuer:
         agent_state = game_state.pursuer
         other_state = game_state.player
@@ -74,3 +87,20 @@ def explore_policy(game_state: GameState, is_pursuer: bool) -> int:
     if len(valid_actions) == 0:
         return 0
     return random.choice(valid_actions)
+
+def convert_obs(
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray], add_dim: bool = False
+) -> Tuple[Tensor, Tensor, Tensor]:
+    o = process_obs(obs)
+    if add_dim:
+        return (
+            torch.from_numpy(o[0]).float().unsqueeze(0),
+            torch.from_numpy(o[1]).float().unsqueeze(0),
+            torch.from_numpy(o[2]).float().unsqueeze(0),
+        )
+
+    return (
+        torch.from_numpy(o[0]).float(),
+        torch.from_numpy(o[1]).float(),
+        torch.from_numpy(o[2]).float(),
+    )

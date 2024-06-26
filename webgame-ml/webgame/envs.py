@@ -8,6 +8,9 @@ from webgame_rust import AgentState, GameWrapper, GameState
 import numpy as np
 import functools
 
+from webgame.common import process_obs
+from webgame.filter import BayesFilter
+
 # The maximum number of object vectors supported by the environment.
 MAX_OBJS = 16
 # The dimension of each object vector.
@@ -22,7 +25,7 @@ class GameEnv(pettingzoo.ParallelEnv):
     An environment that wraps an instance of our game.
 
     Agents: pursuer, player
-    
+
     Observation Space: A tuple, where the first item is a vector of the following form:
 
         0: This agent's x coordinate, normalized between 0 and 1
@@ -42,11 +45,37 @@ class GameEnv(pettingzoo.ParallelEnv):
         visualize: If we should log visuals to Rerun.
     """
 
-    def __init__(self, use_objs: bool = False, visualize: bool = False, recording_id: Optional[str] = None):
-        self.game = GameWrapper(use_objs, visualize, recording_id)
+    def __init__(
+        self,
+        use_objs: bool = False,
+        wall_prob: float = 0.1,
+        max_timer: Optional[int] = None,
+        visualize: bool = False,
+        recording_id: Optional[str] = None,
+        update_fn: Optional[
+            Callable[
+                [
+                    Tuple[np.ndarray, np.ndarray, np.ndarray],
+                    bool,
+                    GameState,
+                    AgentState,
+                    int,
+                    float,
+                    bool,
+                ],
+                np.ndarray,
+            ]
+        ] = None,
+    ):
+        self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]
+        self.timer = 0
+        self.max_timer = max_timer
+        self.use_objs = use_objs
+        self.update_fn = update_fn
+        self.filters: Optional[Dict[str, BayesFilter]] = None
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -61,17 +90,27 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.game_state = self.game.step(all_actions[0], all_actions[1])
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
+
+        # Check if pursuer can see player
+        player_e, _ = list(
+            filter(lambda t: t[1].obj_type == "player", self.game_state.objects.items())
+        )[0]
+        seen_player = player_e in self.game_state.pursuer.observing
+
+        self.timer += 1
+        trunc = self.timer == self.max_timer
+
         rewards = {
-            "player": 0.0,
-            "pursuer": 0.0,
+            "player": -float(seen_player),
+            "pursuer": float(seen_player),
         }
         dones = {
             "player": False,
             "pursuer": False,
         }
         truncs = {
-            "player": False,
-            "pursuer": False,
+            "player": trunc,
+            "pursuer": trunc,
         }
         infos = {
             "player": None,
@@ -79,11 +118,24 @@ class GameEnv(pettingzoo.ParallelEnv):
         }
         return (obs, rewards, dones, truncs, infos)
 
-    def reset(
-        self, *args
-    ) -> tuple[Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]], Mapping[str, None]]:
+    def reset(self, *args) -> tuple[
+        Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+        Mapping[str, None],
+    ]:
         self.game_state = self.game.reset()
         assert self.game_state
+        self.timer = 0
+        if self.update_fn:
+            self.filters = {
+                agent: BayesFilter(
+                    self.game_state.level_size,
+                    CELL_SIZE,
+                    self.update_fn,
+                    self.use_objs,
+                    agent == "pursuer",
+                )
+                for agent in self.agents
+            }
         obs = self.game_state_to_obs(self.game_state)
         infos = {
             "player": None,
@@ -106,15 +158,15 @@ class GameEnv(pettingzoo.ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, _agent: str) -> gym.Space:
         return gym.spaces.Discrete(10)
-    
+
     @functools.lru_cache(maxsize=None)
     def observation_space(self, _: str) -> gym.Space:
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (self.level_size, self.level_size)),
+                gym.spaces.Box(0, 1, (2, 8, 8)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
-                gym.spaces.Box(0, 1, (MAX_OBJS,))
+                gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )
         )
 
@@ -148,8 +200,12 @@ class GameEnv(pettingzoo.ParallelEnv):
             if e in agent_state.vm_data:
                 obs_obj = game_state.objects[e]
                 obj_features = np.zeros([OBJ_DIM])
-                obj_features[0] = 0.5 + obs_obj.pos.x / (game_state.level_size * CELL_SIZE)
-                obj_features[1] = 0.5 + obs_obj.pos.y / (game_state.level_size * CELL_SIZE)
+                obj_features[0] = 0.5 + obs_obj.pos.x / (
+                    game_state.level_size * CELL_SIZE
+                )
+                obj_features[1] = 0.5 + obs_obj.pos.y / (
+                    game_state.level_size * CELL_SIZE
+                )
                 obj_features[2] = 1
                 vm_data = agent_state.vm_data[e]
                 obj_features[5] = vm_data.last_seen_elapsed / 10.0
@@ -166,9 +222,26 @@ class GameEnv(pettingzoo.ParallelEnv):
             obs_vecs[i + len(agent_state.observing)] = obj_features
 
         attn_mask = np.zeros([MAX_OBJS])
-        attn_mask[len(agent_state.observing) + len(agent_state.listening):] = 1
+        attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
-        return (obs_vec, walls, obs_vecs, attn_mask)
+        agent_name = ["player", "pursuer"][int(is_pursuer)]
+        filter_probs = np.zeros(walls.shape, dtype=float)
+        if self.filters:
+            filter_probs = self.filters[agent_name].localize(
+                process_obs(
+                    (
+                        obs_vec,
+                        np.stack([walls, filter_probs]),
+                        obs_vec,
+                        attn_mask,
+                    )
+                ),
+                game_state,
+                agent_state,
+            )
+        grid = np.stack([walls, filter_probs])
+
+        return (obs_vec, grid, obs_vecs, attn_mask)
 
 
 if __name__ == "__main__":

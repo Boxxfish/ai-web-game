@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use bevy::{
     asset::AssetMetaCheck,
-    log::LogPlugin,
     prelude::*,
     render::{settings::WgpuSettings, RenderPlugin},
     time::TimeUpdateStrategy,

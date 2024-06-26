@@ -28,9 +28,10 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--num-seqs", type=int, default=4_000)
     parser.add_argument("--use-objs", default=False, action="store_true")
+    parser.add_argument("--wall-prob", type=float, default=0.1)
     args = parser.parse_args()
 
-    env = GameEnv(use_objs=args.use_objs)
+    env = GameEnv(use_objs=args.use_objs, wall_prob=args.wall_prob)
     action_space = env.action_space("pursuer")
     all_seqs = []
     all_tiles = []
