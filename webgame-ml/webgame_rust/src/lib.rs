@@ -128,7 +128,7 @@ impl<'source> FromPyObject<'source> for AgentAction {
 pub struct GameWrapper {
     pub app: App,
     pub use_objs: bool,
-    pub wall_prob: f32,
+    pub wall_prob: f64,
     pub visualize: bool,
     pub recording_id: Option<String>,
 }
@@ -138,7 +138,7 @@ impl GameWrapper {
     #[new]
     pub fn new(
         use_objs: bool,
-        wall_prob: f32,
+        wall_prob: f64,
         visualize: bool,
         recording_id: Option<String>,
     ) -> Self {

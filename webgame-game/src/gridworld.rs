@@ -55,10 +55,10 @@ pub struct LevelLayout {
 
 impl LevelLayout {
     /// Generates a randomized level.
-    pub fn random(size: usize, wall_prob: f32) -> Self {
+    pub fn random(size: usize, wall_prob: f64) -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            walls: (0..(size * size)).map(|_| rng.gen_bool(0.1)).collect(),
+            walls: (0..(size * size)).map(|_| rng.gen_bool(wall_prob)).collect(),
             size,
         }
     }

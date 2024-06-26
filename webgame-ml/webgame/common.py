@@ -11,8 +11,8 @@ def process_obs(obs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]) -> T
     """
     scalar_obs, grid_obs = obs[:2]
     grid_shape = grid_obs.shape
-    # Add another dim if there's only 2
-    add_dim = len(grid_shape) == 2
+    # Add another dim if there's only 3
+    add_dim = len(grid_shape) == 3
     if add_dim:
         scalar_obs = scalar_obs[np.newaxis, ...]
         grid_obs = grid_obs[np.newaxis, ...]

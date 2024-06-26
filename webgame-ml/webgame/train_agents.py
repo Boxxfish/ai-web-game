@@ -22,7 +22,7 @@ from webgame.algorithms.rollout_buffer import RolloutBuffer
 from webgame.common import process_obs
 from webgame.conf import entity
 from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
-from webgame.train_filter import Backbone
+from webgame.models import Backbone
 
 _: Any
 

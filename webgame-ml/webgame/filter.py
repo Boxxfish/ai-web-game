@@ -10,7 +10,7 @@ from webgame.common import explore_policy, pos_to_grid, process_obs
 
 from torch import nn
 
-from webgame.train_filter import MeasureModel
+from webgame.models import MeasureModel
 
 
 class BayesFilter:
@@ -152,19 +152,20 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
+    parser.add_argument("--wall-prob", type=float, default=0.1)
     args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
 
-    env = GameEnv(visualize=True, recording_id=recording_id)
+    env = GameEnv(wall_prob=args.wall_prob, visualize=True, recording_id=recording_id)
     env.reset()
 
     action_space = env.action_space("pursuer")  # Same for both agents
     assert env.game_state is not None
     if args.checkpoint:
-        model = MeasureModel(8, env.game_state.level_size, args.use_pos)
+        model = MeasureModel(9, env.game_state.level_size, args.use_pos)
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
     else:
