@@ -14,7 +14,7 @@ import wandb
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 from torch.distributions import Categorical
 from tqdm import tqdm
-from safetensors.torch import save_model
+from safetensors.torch import save_model, load_model
 
 from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
@@ -22,7 +22,8 @@ from webgame.algorithms.rollout_buffer import RolloutBuffer
 from webgame.common import process_obs
 from webgame.conf import entity
 from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
-from webgame.models import Backbone
+from webgame.filter import gt_update, manual_update, model_update
+from webgame.models import Backbone, MeasureModel
 
 _: Any
 
@@ -49,7 +50,11 @@ class Config:
     max_timer: int = 100  # Maximum length of an episode.
     save_every: int = 100  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
-    wall_prob: float = 0.1 # Probability of a cell containing a wall.
+    wall_prob: float = 0.1  # Probability of a cell containing a wall.
+    update_fn: str = (
+        "manual"  # The filter's update function. Valid choices: manual, model, gt
+    )
+    update_chkpt: str = ""  # Checkpoint to use for filter.
     device: str = "cuda"  # Device to use during training.
 
 
@@ -194,6 +199,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = Config(**args.__dict__)
     device = torch.device(cfg.device)
+    
+    assert cfg.update_fn in ["manual", "model", "gt"]
+    if cfg.update_chkpt:
+        assert cfg.update_fn == "model"
+    if cfg.update_fn == "model":
+        m_model = MeasureModel(9, 8, cfg.use_pos)
+        load_model(m_model, cfg.update_chkpt)
+        update_fn = model_update(m_model)
+    elif cfg.update_fn == "manual":
+        update_fn = manual_update
+    else:
+        update_fn = gt_update
 
     wandb_cfg = {"experiment": "agents"}
     wandb_cfg.update(cfg.__dict__)

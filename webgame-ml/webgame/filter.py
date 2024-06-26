@@ -107,6 +107,7 @@ def manual_update(
             lkhd[y][x] = grid_lkhd * agent_lkhd
     return lkhd
 
+
 def model_update(
     model: nn.Module,
 ) -> Callable[
@@ -143,6 +144,23 @@ def model_update(
     return model_update_
 
 
+def gt_update(
+    obs: Tuple[np.ndarray, np.ndarray, np.ndarray],
+    use_objs: bool,
+    game_state: GameState,
+    agent_state: AgentState,
+    size: int,
+    cell_size: float,
+) -> np.ndarray:
+    player_pos = game_state.player.pos
+    grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, CELL_SIZE)
+    lkhd = np.zeros([size, size])
+    lkhd[grid_pos[1], grid_pos[0]] = 1
+    kernel = np.array([[0.1, 0.1, 0.1], [0.1, 1, 0.1], [0.1, 0.1, 0.1]])
+    lkhd = signal.convolve2d(lkhd, kernel, mode="same")
+    return lkhd
+
+
 if __name__ == "__main__":
     from webgame.envs import GameEnv, CELL_SIZE
     import rerun as rr  # type: ignore
@@ -152,6 +170,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
+    parser.add_argument("--use-gt", action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
     args = parser.parse_args()
 
@@ -168,6 +187,8 @@ if __name__ == "__main__":
         model = MeasureModel(9, env.game_state.level_size, args.use_pos)
         load_model(model, args.checkpoint)
         update_fn = model_update(model)
+    elif args.use_gt:
+        update_fn = gt_update
     else:
         update_fn = manual_update
     b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False)
