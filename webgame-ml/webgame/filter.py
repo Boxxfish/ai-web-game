@@ -30,16 +30,19 @@ class BayesFilter:
                 AgentState,
                 int,
                 float,
+                bool,
             ],
             np.ndarray,
         ],
         use_objs: bool,
+        is_pursuer: bool,
     ):
         self.size = size
         self.cell_size = cell_size
         self.belief = np.ones([size, size]) / size**2
         self.update_fn = update_fn
         self.use_objs = use_objs
+        self.is_pursuer = is_pursuer
 
     def localize(
         self,
@@ -52,7 +55,7 @@ class BayesFilter:
         """
         self.belief = self.predict(self.belief)
         lkhd = self.update_fn(
-            obs, self.use_objs, game_state, agent_state, self.size, self.cell_size
+            obs, self.use_objs, game_state, agent_state, self.size, self.cell_size, self.is_pursuer
         )
         self.belief = lkhd * self.belief
         self.belief = self.belief / self.belief.sum()
@@ -72,17 +75,17 @@ def manual_update(
     agent_state: AgentState,
     size: int,
     cell_size: float,
+    is_pursuer: bool,
 ) -> np.ndarray:
     assert not use_objs, "Not compatible with objects"
     # Check whether agent can see the player
-    player_e, player_obs = list(
-        filter(lambda t: t[1].obj_type == "player", game_state.objects.items())
+    other_agent = ["pursuer", "player"][int(is_pursuer)]
+    other_e, other_obs = list(
+        filter(lambda t: t[1].obj_type == other_agent, game_state.objects.items())
     )[0]
     player_vis_grid = None
-    if player_e in agent_state.observing:
-        player_vis_grid = pos_to_grid(
-            player_obs.pos.x, player_obs.pos.y, size, cell_size
-        )
+    if other_e in agent_state.observing:
+        player_vis_grid = pos_to_grid(other_obs.pos.x, other_obs.pos.y, size, cell_size)
 
     obs_grid = np.array(game_state.walls).reshape(
         [game_state.level_size, game_state.level_size]
@@ -118,6 +121,7 @@ def model_update(
         AgentState,
         int,
         float,
+        bool,
     ],
     np.ndarray,
 ]:
@@ -129,6 +133,7 @@ def model_update(
         agent_state: AgentState,
         size: int,
         cell_size: float,
+        is_pursuer: bool,
     ) -> np.ndarray:
         lkhd = (
             model(
@@ -151,6 +156,7 @@ def gt_update(
     agent_state: AgentState,
     size: int,
     cell_size: float,
+    is_pursuer: bool,
 ) -> np.ndarray:
     player_pos = game_state.player.pos
     grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, CELL_SIZE)
@@ -191,7 +197,7 @@ if __name__ == "__main__":
         update_fn = gt_update
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False)
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False, True)
     for _ in range(100):
         actions = {}
         for agent in env.agents:
@@ -206,7 +212,7 @@ if __name__ == "__main__":
         assert game_state is not None
         agent_state = game_state.pursuer
         lkhd = update_fn(
-            obs, False, game_state, agent_state, game_state.level_size, CELL_SIZE
+            obs, False, game_state, agent_state, game_state.level_size, CELL_SIZE, True
         )
         probs = b_filter.localize(obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)

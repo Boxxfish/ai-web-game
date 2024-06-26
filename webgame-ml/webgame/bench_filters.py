@@ -43,7 +43,11 @@ if __name__ == "__main__":
         env.reset()
         assert env.game_state is not None
         b_filter = BayesFilter(
-            env.game_state.level_size, CELL_SIZE, update_fn, use_objs=args.use_objs
+            env.game_state.level_size,
+            CELL_SIZE,
+            update_fn,
+            use_objs=args.use_objs,
+            is_pursuer=True,
         )
         for step in range(args.run_steps):
             actions = {}
@@ -65,6 +69,7 @@ if __name__ == "__main__":
                 agent_state,
                 game_state.level_size,
                 CELL_SIZE,
+                True,
             )
             probs = b_filter.localize(obs, game_state, agent_state)
             probs_flattened = probs.flatten()

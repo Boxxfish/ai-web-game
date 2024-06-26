@@ -61,6 +61,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                     AgentState,
                     int,
                     float,
+                    bool,
                 ],
                 np.ndarray,
             ]
@@ -74,7 +75,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.max_timer = max_timer
         self.use_objs = use_objs
         self.update_fn = update_fn
-        self.filter: Optional[BayesFilter] = None
+        self.filters: Optional[Dict[str, BayesFilter]] = None
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -125,9 +126,16 @@ class GameEnv(pettingzoo.ParallelEnv):
         assert self.game_state
         self.timer = 0
         if self.update_fn:
-            self.filter = BayesFilter(
-                self.game_state.level_size, CELL_SIZE, self.update_fn, self.use_objs
-            )
+            self.filters = {
+                agent: BayesFilter(
+                    self.game_state.level_size,
+                    CELL_SIZE,
+                    self.update_fn,
+                    self.use_objs,
+                    agent == "pursuer",
+                )
+                for agent in self.agents
+            }
         obs = self.game_state_to_obs(self.game_state)
         infos = {
             "player": None,
@@ -216,9 +224,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         attn_mask = np.zeros([MAX_OBJS])
         attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
+        agent_name = ["player", "pursuer"][int(is_pursuer)]
         filter_probs = np.zeros(walls.shape, dtype=float)
-        if self.filter:
-            filter_probs = self.filter.localize(
+        if self.filters:
+            filter_probs = self.filters[agent_name].localize(
                 process_obs(
                     (
                         obs_vec,
