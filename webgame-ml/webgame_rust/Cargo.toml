@@ -33,6 +33,5 @@ features = [
     "bevy_ui",            # UI toolkit
     "animation",          # Animation support
     "default_font",       # Embed a minimal default font for text/UI
-    "webgl2",
     "wayland",
 ]
