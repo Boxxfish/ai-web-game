@@ -10,7 +10,7 @@ from webgame_rust import AgentState, GameState
 from webgame.common import convert_obs, explore_policy, pos_to_grid, process_obs
 
 import gymnasium as gym
-from torch import nn
+from torch import Tensor, nn
 from webgame.models import MeasureModel, PolicyNet
 
 
@@ -174,6 +174,15 @@ def gt_update(
     return lkhd
 
 
+def zero_probs(obs: Tuple[Tensor, Tensor, Tensor]):
+    """
+    Zeroes out the probability channel of observations.
+    """
+    zeroed = obs[0]
+    zeroed[0, :, :] = 0
+    return (zeroed, obs[1].numpy(), obs[2].numpy())
+
+
 if __name__ == "__main__":
     from webgame.envs import GameEnv, CELL_SIZE, MAX_OBJS, OBJ_DIM
     import rerun as rr  # type: ignore
@@ -190,15 +199,21 @@ if __name__ == "__main__":
             action = explore_policy(env.game_state, agent == "pursuer")
         return action
 
-
     def model_policy(
-        chkpt_path: str, action_count: int, use_pos: bool, use_objs: bool,
+        chkpt_path: str,
+        action_count: int,
+        use_pos: bool,
+        use_objs: bool,
     ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
-        p_net = PolicyNet(9, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None)
+        p_net = PolicyNet(
+            9, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None
+        )
         load_model(p_net, chkpt_path)
 
         def policy(
-            agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+            agent: str,
+            env: GameEnv,
+            obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         ) -> int:
             action_probs = p_net(*obs).squeeze(0)
             action = Categorical(logits=action_probs).sample().item()
@@ -220,7 +235,12 @@ if __name__ == "__main__":
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
 
-    env = GameEnv(wall_prob=args.wall_prob, use_objs=args.use_objs, visualize=True, recording_id=recording_id)
+    env = GameEnv(
+        wall_prob=args.wall_prob,
+        use_objs=args.use_objs,
+        visualize=True,
+        recording_id=recording_id,
+    )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
 
@@ -255,14 +275,24 @@ if __name__ == "__main__":
         for agent in env.agents:
             action = policies[agent](agent, env, obs[agent])
             actions[agent] = action
-        obs = {agent: convert_obs(env.step(actions)[0][agent], True) for agent in env.agents}
+        obs = {
+            agent: convert_obs(env.step(actions)[0][agent], True)
+            for agent in env.agents
+        }
 
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
+        filter_obs = zero_probs(obs["pursuer"])
         lkhd = update_fn(
-            tuple([o.numpy() for o in obs["pursuer"]]), False, game_state, agent_state, game_state.level_size, CELL_SIZE, True
+            filter_obs,
+            False,
+            game_state,
+            agent_state,
+            game_state.level_size,
+            CELL_SIZE,
+            True,
         )
-        probs = b_filter.localize(tuple([o.numpy() for o in obs["pursuer"]]), game_state, agent_state)
+        probs = b_filter.localize(filter_obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)
