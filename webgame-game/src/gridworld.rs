@@ -58,7 +58,9 @@ impl LevelLayout {
     pub fn random(size: usize, wall_prob: f64) -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            walls: (0..(size * size)).map(|_| rng.gen_bool(wall_prob)).collect(),
+            walls: (0..(size * size))
+                .map(|_| rng.gen_bool(wall_prob))
+                .collect(),
             size,
         }
     }
@@ -225,22 +227,23 @@ fn setup_entities_playable(
     mut commands: Commands,
     level: Res<LevelLayout>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    commands.spawn(Camera2dBundle {
+    commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(Vec3::new(
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            0.,
-        )),
+            350.,
+        ))
+        .looking_to(-Vec3::Z, Vec3::Y),
         ..default()
     });
 
     for y in 0..level.size {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
-                commands.spawn(MaterialMesh2dBundle {
-                    mesh: Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
+                commands.spawn(PbrBundle {
+                    mesh: meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE)),
                     material: materials.add(Color::BLACK),
                     transform: Transform::from_translation(
                         Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
@@ -265,11 +268,12 @@ fn setup_entities_playable(
     ];
     for i in 0..4 {
         let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((MaterialMesh2dBundle {
-            mesh: Mesh2dHandle(meshes.add(Rectangle::new(
+        commands.spawn((PbrBundle {
+            mesh: meshes.add(Cuboid::new(
                 GRID_CELL_SIZE * level.size as f32 * 2.,
                 GRID_CELL_SIZE * level.size as f32 * 2.,
-            ))),
+                GRID_CELL_SIZE,
+            )),
             material: materials.add(Color::BLACK),
             transform: Transform::from_translation(
                 Vec3::new(positions[i / 2], positions[1 - i / 2], 0.)
