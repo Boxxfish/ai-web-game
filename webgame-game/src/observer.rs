@@ -258,7 +258,7 @@ fn add_vis_cones(
                         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new()),
                     ),
                     material: materials.add(
-                        Color::YELLOW, //.with_a(0.01)
+                        Color::YELLOW.with_a(0.5)
                     ),
                     transform: Transform::from_matrix(xform.compute_matrix().inverse()),
                     ..default()
