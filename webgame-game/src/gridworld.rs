@@ -148,6 +148,7 @@ fn setup_entities(
         )),
         Observer::default(),
         Observable,
+        DebugObserver,
     ));
 
     // Set up walls and doors
