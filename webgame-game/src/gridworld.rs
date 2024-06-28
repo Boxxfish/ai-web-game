@@ -116,14 +116,25 @@ fn setup_entities(
     asset_server: Res<AssetServer>,
     is_playable: Option<Res<IsPlayable>>,
 ) {
-    // Add camera
+    // Add camera + light
     commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(Vec3::new(
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            350.,
+            700.,
         ))
         .looking_to(-Vec3::Z, Vec3::Y),
+        projection: Projection::Perspective(PerspectiveProjection {
+            fov: 0.4,
+            ..default()
+        }),
+        ..default()
+    });
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            illuminance: 2000.,
+            ..default()
+        },
         ..default()
     });
 
@@ -202,7 +213,11 @@ fn setup_entities(
 
     // Set up walls and doors
     let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE));
-    let wall_mat = materials.add(Color::BLACK);
+    let wall_mat = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        unlit: true,
+        ..default()
+    });
     let mut rng = rand::thread_rng();
     for y in 0..level.size {
         for x in 0..level.size {
