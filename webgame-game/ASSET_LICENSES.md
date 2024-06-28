@@ -1,0 +1,2 @@
+- assets/furniture
+    - CC0: https://kenney.nl/assets/furniture-kit
