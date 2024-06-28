@@ -150,10 +150,10 @@ fn setup_entities(
         .with_children(|p| {
             if is_playable.is_some() {
                 p.spawn(SceneBundle {
-                    scene: asset_server.load("furniture/wall.glb#Scene0"),
+                    scene: asset_server.load("characters/cyborgFemaleA.glb#Scene0"),
                     transform: Transform::default()
                         .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
-                        .with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.5),
                     ..default()
                 });
             }
@@ -181,10 +181,10 @@ fn setup_entities(
         .with_children(|p| {
             if is_playable.is_some() {
                 p.spawn(SceneBundle {
-                    scene: asset_server.load("furniture/wall.glb#Scene0"),
+                    scene: asset_server.load("characters/skaterMaleA.glb#Scene0"),
                     transform: Transform::default()
                         .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
-                        .with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.5),
                     ..default()
                 });
             }
