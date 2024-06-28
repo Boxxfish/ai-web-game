@@ -10,6 +10,7 @@ use bevy_rapier2d::{
 use rand::{seq::IteratorRandom, Rng};
 
 use crate::{
+    configs::IsPlayable,
     observer::{DebugObserver, Observable, Observer, Wall},
     world_objs::{NoiseSource, VisualMarker},
 };
@@ -19,15 +20,14 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_entities, setup_entities_playable))
-            .add_systems(
-                Update,
-                (
-                    move_agents,
-                    visualize_agent::<PursuerAgent>(Color::RED),
-                    visualize_agent::<PlayerAgent>(Color::GREEN),
-                ),
-            );
+        app.add_systems(Startup, setup_entities).add_systems(
+            Update,
+            (
+                move_agents,
+                visualize_agent::<PursuerAgent>(Color::RED),
+                visualize_agent::<PlayerAgent>(Color::GREEN),
+            ),
+        );
     }
 }
 
@@ -111,7 +111,22 @@ fn setup_entities(
     mut commands: Commands,
     level: Res<LevelLayout>,
     max_items: Option<Res<MaxItems>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    is_playable: Option<Res<IsPlayable>>,
 ) {
+    // Add camera
+    commands.spawn(Camera3dBundle {
+        transform: Transform::from_translation(Vec3::new(
+            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            350.,
+        ))
+        .looking_to(-Vec3::Z, Vec3::Y),
+        ..default()
+    });
+
     let pursuer_tile_idx = level.get_empty();
     commands.spawn((
         PursuerAgent,
@@ -152,17 +167,51 @@ fn setup_entities(
     ));
 
     // Set up walls and doors
+    let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE));
+    let wall_mat = materials.add(Color::BLACK);
     let mut rng = rand::thread_rng();
     for y in 0..level.size {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
-                commands.spawn((
-                    Wall,
-                    Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
-                    TransformBundle::from_transform(Transform::from_translation(
-                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
-                    )),
-                ));
+                commands
+                    .spawn((
+                        Wall,
+                        Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
+                        TransformBundle::from_transform(Transform::from_translation(
+                            Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
+                        )),
+                        VisibilityBundle::default(),
+                    ))
+                    .with_children(|p| {
+                        if is_playable.is_some() {
+                            let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
+                            let base_xform = Transform::default()
+                                .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
+                                .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                                .with_scale(Vec3::ONE * GRID_CELL_SIZE);
+                            for i in 0..4 {
+                                let rot = if i >= 2 {
+                                    Quat::IDENTITY
+                                } else {
+                                    Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                                };
+                                p.spawn(SceneBundle {
+                                    scene: asset_server.load("furniture/wall.glb#Scene0"),
+                                    transform: Transform::default()
+                                        .with_rotation(rot)
+                                        .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                                        * base_xform,
+                                    ..default()
+                                });
+                            }
+                        } else {
+                            p.spawn(PbrBundle {
+                                mesh: wall_mesh.clone(),
+                                material: wall_mat.clone(),
+                                ..default()
+                            });
+                        }
+                    });
             } else if rng.gen_bool(DOOR_PROB) {
                 // commands.spawn((
                 //     Door::default(),
@@ -184,11 +233,20 @@ fn setup_entities(
         commands.spawn((
             Wall,
             Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
-            TransformBundle::from_transform(Transform::from_translation(Vec3::new(
-                positions[i / 2],
-                positions[1 - i / 2],
-                0.,
-            ))),
+            PbrBundle {
+                mesh: meshes.add(Cuboid::new(
+                    half_sizes[i / 2] * 2.,
+                    half_sizes[1 - i / 2] * 2.,
+                    GRID_CELL_SIZE,
+                )),
+                material: wall_mat.clone(),
+                transform: Transform::from_translation(Vec3::new(
+                    positions[i / 2],
+                    positions[1 - i / 2],
+                    0.,
+                )),
+                ..default()
+            },
         ));
     }
 
@@ -222,68 +280,6 @@ fn setup_entities(
 }
 
 pub const GRID_CELL_SIZE: f32 = 25.;
-
-/// Sets up entities for playable mode.
-fn setup_entities_playable(
-    mut commands: Commands,
-    level: Res<LevelLayout>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_translation(Vec3::new(
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            350.,
-        ))
-        .looking_to(-Vec3::Z, Vec3::Y),
-        ..default()
-    });
-
-    for y in 0..level.size {
-        for x in 0..level.size {
-            if level.walls[y * level.size + x] {
-                commands.spawn(PbrBundle {
-                    mesh: meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE)),
-                    material: materials.add(Color::BLACK),
-                    transform: Transform::from_translation(
-                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
-                    ),
-                    ..default()
-                });
-            }
-        }
-    }
-
-    // Set up the sides of the game world
-    let wall_positions = [
-        -GRID_CELL_SIZE * 0.5,
-        GRID_CELL_SIZE * (level.size as f32 - 0.5),
-    ];
-    let wall_pos_offset = GRID_CELL_SIZE * (level.size as f32 / 2. - 0.5);
-    let anchors_offset = [
-        Vec2::new(-GRID_CELL_SIZE * level.size as f32, 0.),
-        Vec2::new(GRID_CELL_SIZE * level.size as f32, 0.),
-        Vec2::new(0., -GRID_CELL_SIZE * level.size as f32),
-        Vec2::new(0., GRID_CELL_SIZE * level.size as f32),
-    ];
-    for i in 0..4 {
-        let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((PbrBundle {
-            mesh: meshes.add(Cuboid::new(
-                GRID_CELL_SIZE * level.size as f32 * 2.,
-                GRID_CELL_SIZE * level.size as f32 * 2.,
-                GRID_CELL_SIZE,
-            )),
-            material: materials.add(Color::BLACK),
-            transform: Transform::from_translation(
-                Vec3::new(positions[i / 2], positions[1 - i / 2], 0.)
-                    + anchors_offset[i].extend(0.),
-            ),
-            ..default()
-        },));
-    }
-}
 
 /// Adds a visual to newly created agents.
 fn visualize_agent<T: Component>(
