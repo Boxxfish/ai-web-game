@@ -128,43 +128,67 @@ fn setup_entities(
     });
 
     let pursuer_tile_idx = level.get_empty();
-    commands.spawn((
-        PursuerAgent,
-        Agent::default(),
-        NextAction::default(),
-        Collider::ball(GRID_CELL_SIZE * 0.25),
-        RigidBody::KinematicPositionBased,
-        KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(
-                (pursuer_tile_idx % level.size) as f32,
-                (pursuer_tile_idx / level.size) as f32,
-                0.,
-            ) * GRID_CELL_SIZE,
-        )),
-        Observer::default(),
-        Observable,
-        DebugObserver,
-    ));
+    commands
+        .spawn((
+            PursuerAgent,
+            Agent::default(),
+            NextAction::default(),
+            Collider::ball(GRID_CELL_SIZE * 0.25),
+            RigidBody::KinematicPositionBased,
+            KinematicCharacterController::default(),
+            TransformBundle::from_transform(Transform::from_translation(
+                Vec3::new(
+                    (pursuer_tile_idx % level.size) as f32,
+                    (pursuer_tile_idx / level.size) as f32,
+                    0.,
+                ) * GRID_CELL_SIZE,
+            )),
+            Observer::default(),
+            Observable,
+            DebugObserver,
+        ))
+        .with_children(|p| {
+            if is_playable.is_some() {
+                p.spawn(SceneBundle {
+                    scene: asset_server.load("furniture/wall.glb#Scene0"),
+                    transform: Transform::default()
+                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                        .with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                    ..default()
+                });
+            }
+        });
     let player_tile_idx = level.get_empty();
-    commands.spawn((
-        PlayerAgent,
-        Agent::default(),
-        NextAction::default(),
-        Collider::ball(GRID_CELL_SIZE * 0.25),
-        RigidBody::KinematicPositionBased,
-        KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(
-                (player_tile_idx % level.size) as f32,
-                (player_tile_idx / level.size) as f32,
-                0.,
-            ) * GRID_CELL_SIZE,
-        )),
-        Observer::default(),
-        Observable,
-        DebugObserver,
-    ));
+    commands
+        .spawn((
+            PlayerAgent,
+            Agent::default(),
+            NextAction::default(),
+            Collider::ball(GRID_CELL_SIZE * 0.25),
+            RigidBody::KinematicPositionBased,
+            KinematicCharacterController::default(),
+            TransformBundle::from_transform(Transform::from_translation(
+                Vec3::new(
+                    (player_tile_idx % level.size) as f32,
+                    (player_tile_idx / level.size) as f32,
+                    0.,
+                ) * GRID_CELL_SIZE,
+            )),
+            Observer::default(),
+            Observable,
+            DebugObserver,
+        ))
+        .with_children(|p| {
+            if is_playable.is_some() {
+                p.spawn(SceneBundle {
+                    scene: asset_server.load("furniture/wall.glb#Scene0"),
+                    transform: Transform::default()
+                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                        .with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                    ..default()
+                });
+            }
+        });
 
     // Add floor
     commands.spawn(SceneBundle {
