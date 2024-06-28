@@ -166,6 +166,16 @@ fn setup_entities(
         DebugObserver,
     ));
 
+    // Add floor
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("furniture/floorFull.glb#Scene0"),
+        transform: Transform::default()
+            .with_translation(Vec3::new(-1., -1., 0.) * GRID_CELL_SIZE / 2.)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+            .with_scale(Vec3::new(level.size as f32, 1., level.size as f32) * GRID_CELL_SIZE),
+        ..default()
+    });
+
     // Set up walls and doors
     let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE));
     let wall_mat = materials.add(Color::BLACK);
@@ -230,24 +240,49 @@ fn setup_entities(
     let wall_pos_offset = GRID_CELL_SIZE * (level.size - 1) as f32 / 2.;
     for i in 0..4 {
         let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((
-            Wall,
-            Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
-            PbrBundle {
-                mesh: meshes.add(Cuboid::new(
-                    half_sizes[i / 2] * 2.,
-                    half_sizes[1 - i / 2] * 2.,
-                    GRID_CELL_SIZE,
-                )),
-                material: wall_mat.clone(),
-                transform: Transform::from_translation(Vec3::new(
+        commands
+            .spawn((
+                Wall,
+                Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
+                TransformBundle::from_transform(Transform::from_translation(Vec3::new(
                     positions[i / 2],
                     positions[1 - i / 2],
                     0.,
-                )),
-                ..default()
-            },
-        ));
+                ))),
+                VisibilityBundle::default(),
+            ))
+            .with_children(|p| {
+                if is_playable.is_some() {
+                    let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
+                    let base_xform = Transform::default()
+                        .with_translation(-Vec3::X * GRID_CELL_SIZE * level.size as f32 / 2.)
+                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                        .with_scale(Vec3::new(level.size as f32, 1., 1.) * GRID_CELL_SIZE);
+                    let rot = if i >= 2 {
+                        Quat::IDENTITY
+                    } else {
+                        Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                    };
+                    p.spawn(SceneBundle {
+                        scene: asset_server.load("furniture/wall.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(rot)
+                            .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                            * base_xform,
+                        ..default()
+                    });
+                } else {
+                    p.spawn(PbrBundle {
+                        mesh: meshes.add(Cuboid::new(
+                            half_sizes[i / 2] * 2.,
+                            half_sizes[1 - i / 2] * 2.,
+                            GRID_CELL_SIZE,
+                        )),
+                        material: wall_mat.clone(),
+                        ..default()
+                    });
+                }
+            });
     }
 
     // Add noise sources and visual markers

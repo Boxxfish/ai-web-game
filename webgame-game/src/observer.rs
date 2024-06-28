@@ -285,9 +285,9 @@ fn draw_observer_areas(
     for (observer, children, xform) in observer_query.iter() {
         let mut vertices = Vec::new();
         for tri in &observer.vis_mesh {
-            vertices.push([tri[0].x, tri[0].y, 0.]);
-            vertices.push([tri[1].x, tri[1].y, 0.]);
-            vertices.push([tri[2].x, tri[2].y, 0.]);
+            vertices.push([tri[0].x, tri[0].y, 2.]);
+            vertices.push([tri[1].x, tri[1].y, 2.]);
+            vertices.push([tri[2].x, tri[2].y, 2.]);
         }
         for child in children.iter() {
             if let Ok((mesh, mut cone_xform)) = vis_cone_query.get_mut(*child) {

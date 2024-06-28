@@ -43,6 +43,7 @@ impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(IsPlayable)
             .insert_resource(AssetMetaCheck::Never)
+            .insert_resource(ClearColor(Color::BLACK))
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Your Project (Game)".into(),
