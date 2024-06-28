@@ -225,10 +225,16 @@ fn setup_entities(
                                 .with_scale(Vec3::ONE * GRID_CELL_SIZE);
                             for i in 0..4 {
                                 let should_spawn = match i {
-                                    0 => (y > 0) && !level.walls[(y - 1) * level.size + x],
-                                    1 => (y < level.size - 1) && !level.walls[(y + 1) * level.size + x],
-                                    2 => (x > 0) && !level.walls[y * level.size + (x - 1)],
-                                    3 => (x < level.size - 1) && !level.walls[y * level.size + (x + 1)],
+                                    3 => (y > 0) && !level.walls[(y - 1) * level.size + x],
+                                    2 => {
+                                        (y < level.size - 1)
+                                            && !level.walls[(y + 1) * level.size + x]
+                                    }
+                                    1 => (x > 0) && !level.walls[y * level.size + (x - 1)],
+                                    0 => {
+                                        (x < level.size - 1)
+                                            && !level.walls[y * level.size + (x + 1)]
+                                    }
                                     _ => unreachable!(),
                                 };
                                 if should_spawn {
@@ -241,19 +247,19 @@ fn setup_entities(
                                         scene: asset_server.load("furniture/wall.glb#Scene0"),
                                         transform: Transform::default()
                                             .with_rotation(rot)
-                                            .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                                            .with_translation(offsets[i] * (GRID_CELL_SIZE / 2. + 0.1))
                                             * base_xform,
                                         ..default()
                                     });
                                 }
                             }
-                        } else {
-                            p.spawn(PbrBundle {
-                                mesh: wall_mesh.clone(),
-                                material: wall_mat.clone(),
-                                ..default()
-                            });
                         }
+                        p.spawn(PbrBundle {
+                            mesh: wall_mesh.clone(),
+                            material: wall_mat.clone(),
+                            transform: Transform::from_translation(Vec3::Z * GRID_CELL_SIZE / 2.),
+                            ..default()
+                        });
                     });
             } else if rng.gen_bool(DOOR_PROB) {
                 // commands.spawn((
