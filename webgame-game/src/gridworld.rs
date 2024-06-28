@@ -224,19 +224,28 @@ fn setup_entities(
                                 .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
                                 .with_scale(Vec3::ONE * GRID_CELL_SIZE);
                             for i in 0..4 {
-                                let rot = if i >= 2 {
-                                    Quat::IDENTITY
-                                } else {
-                                    Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                                let should_spawn = match i {
+                                    0 => (y > 0) && !level.walls[(y - 1) * level.size + x],
+                                    1 => (y < level.size - 1) && !level.walls[(y + 1) * level.size + x],
+                                    2 => (x > 0) && !level.walls[y * level.size + (x - 1)],
+                                    3 => (x < level.size - 1) && !level.walls[y * level.size + (x + 1)],
+                                    _ => unreachable!(),
                                 };
-                                p.spawn(SceneBundle {
-                                    scene: asset_server.load("furniture/wall.glb#Scene0"),
-                                    transform: Transform::default()
-                                        .with_rotation(rot)
-                                        .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
-                                        * base_xform,
-                                    ..default()
-                                });
+                                if should_spawn {
+                                    let rot = if i >= 2 {
+                                        Quat::IDENTITY
+                                    } else {
+                                        Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                                    };
+                                    p.spawn(SceneBundle {
+                                        scene: asset_server.load("furniture/wall.glb#Scene0"),
+                                        transform: Transform::default()
+                                            .with_rotation(rot)
+                                            .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                                            * base_xform,
+                                        ..default()
+                                    });
+                                }
                             }
                         } else {
                             p.spawn(PbrBundle {
