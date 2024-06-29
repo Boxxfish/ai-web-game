@@ -1,0 +1,4 @@
+- assets/furniture
+    - CC0: https://kenney.nl/assets/furniture-kit
+- assets/characters
+    - CC0: https://kenney.nl/assets/animated-characters-2

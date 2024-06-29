@@ -1,6 +1,8 @@
 #![allow(clippy::type_complexity)]
 
 use bevy::prelude::*;
+#[cfg(feature = "editor")]
+use bevy_editor_pls::EditorPlugin;
 use configs::ReleaseCfgPlugin;
 
 mod net;
@@ -11,5 +13,9 @@ mod world_objs;
 
 /// Main entry point for our game.
 fn main() {
-    App::new().add_plugins(ReleaseCfgPlugin).run();
+    let mut app = App::new();
+    app.add_plugins(ReleaseCfgPlugin);
+    #[cfg(feature = "editor")]
+    app.add_plugins(EditorPlugin::default());
+    app.run();
 }

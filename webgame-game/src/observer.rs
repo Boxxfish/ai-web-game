@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use bevy::{prelude::*, sprite::Mesh2dHandle};
+use bevy::{
+    prelude::*,
+    render::{mesh::PrimitiveTopology, render_asset::RenderAssetUsages},
+    sprite::Mesh2dHandle,
+};
 use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
@@ -19,7 +23,12 @@ impl Plugin for ObserverPlugin {
             (
                 update_observers.after(move_agents),
                 update_vm_data,
-                draw_observer_areas.after(update_observers),
+                add_vis_cones,
+                remove_vis_cones,
+                draw_observer_areas
+                    .after(update_observers)
+                    .after(add_vis_cones)
+                    .after(remove_vis_cones),
             ),
         );
     }
@@ -230,29 +239,66 @@ fn sign(p1: Vec2, p2: Vec2, p3: Vec2) -> f32 {
 #[derive(Component)]
 struct VisCone;
 
-/// Draws visible areas for observers.
-fn draw_observer_areas(
-    observer_query: Query<&Observer, With<DebugObserver>>,
-    vis_cone_query: Query<(Entity, &Mesh2dHandle, &Handle<ColorMaterial>), With<VisCone>>,
-    mut commands: Commands,
+/// Adds a vision cone to all `DebugObserver`s.
+fn add_vis_cones(
+    observer_query: Query<(Entity, &GlobalTransform), Added<DebugObserver>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
 ) {
-    for (e, mesh, color) in vis_cone_query.iter() {
-        meshes.remove(&mesh.0);
-        materials.remove(color);
-        commands.entity(e).despawn();
-    }
-    for observer in observer_query.iter() {
-        for tri in &observer.vis_mesh {
-            commands.spawn((
-                ColorMesh2dBundle {
-                    mesh: Mesh2dHandle(meshes.add(Triangle2d::new(tri[0], tri[1], tri[2]))),
-                    material: materials.add(Color::YELLOW.with_a(0.01)),
+    for (e, xform) in observer_query.iter() {
+        commands.entity(e).with_children(|p| {
+            p.spawn((
+                PbrBundle {
+                    mesh: meshes.add(
+                        Mesh::new(
+                            PrimitiveTopology::TriangleList,
+                            RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+                        )
+                        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new()),
+                    ),
+                    material: materials.add(
+                        Color::YELLOW.with_a(0.5)
+                    ),
+                    transform: Transform::from_matrix(xform.compute_matrix().inverse()),
                     ..default()
                 },
                 VisCone,
             ));
+        });
+    }
+}
+
+/// If `DebugObserver` is removed, removes the vision cone.
+fn remove_vis_cones(mut observer_query: RemovedComponents<DebugObserver>, mut commands: Commands) {
+    for e in observer_query.read() {
+        commands.entity(e).despawn();
+    }
+}
+
+/// Draws visible areas for observers.
+fn draw_observer_areas(
+    observer_query: Query<(&Observer, &Children, &GlobalTransform), With<DebugObserver>>,
+    mut vis_cone_query: Query<(&Handle<Mesh>, &mut Transform), With<VisCone>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    for (observer, children, xform) in observer_query.iter() {
+        let mut vertices = Vec::new();
+        for tri in &observer.vis_mesh {
+            vertices.push([tri[0].x, tri[0].y, 2.]);
+            vertices.push([tri[1].x, tri[1].y, 2.]);
+            vertices.push([tri[2].x, tri[2].y, 2.]);
+        }
+        for child in children.iter() {
+            if let Ok((mesh, mut cone_xform)) = vis_cone_query.get_mut(*child) {
+                if let Some(mesh) = meshes.get_mut(mesh) {
+                    *cone_xform = Transform::from_matrix(xform.compute_matrix().inverse());
+                    *mesh = mesh
+                        .clone()
+                        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+                }
+                break;
+            }
         }
     }
 }

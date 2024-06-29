@@ -1,3 +1,5 @@
+use std::{f32::consts::PI, time::Duration};
+
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
@@ -10,6 +12,7 @@ use bevy_rapier2d::{
 use rand::{seq::IteratorRandom, Rng};
 
 use crate::{
+    configs::IsPlayable,
     observer::{DebugObserver, Observable, Observer, Wall},
     world_objs::{NoiseSource, VisualMarker},
 };
@@ -19,15 +22,14 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_entities, setup_entities_playable))
-            .add_systems(
-                Update,
-                (
-                    move_agents,
-                    visualize_agent::<PursuerAgent>(Color::RED),
-                    visualize_agent::<PlayerAgent>(Color::GREEN),
-                ),
-            );
+        app.add_systems(Startup, setup_entities).add_systems(
+            Update,
+            (
+                move_agents,
+                visualize_agent::<PursuerAgent>(Color::RED),
+                visualize_agent::<PlayerAgent>(Color::GREEN),
+            ),
+        );
     }
 }
 
@@ -58,7 +60,9 @@ impl LevelLayout {
     pub fn random(size: usize, wall_prob: f64) -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            walls: (0..(size * size)).map(|_| rng.gen_bool(wall_prob)).collect(),
+            walls: (0..(size * size))
+                .map(|_| rng.gen_bool(wall_prob))
+                .collect(),
             size,
         }
     }
@@ -99,6 +103,10 @@ pub struct PursuerAgent;
 #[derive(Component)]
 pub struct PlayerAgent;
 
+/// The child of an `Agent` that contains its visuals.
+#[derive(Component)]
+pub struct AgentVisuals;
+
 /// Determines the maximum number of items that will be spawned.
 /// If this resource is not found, no items are spawned.
 #[derive(Resource)]
@@ -109,57 +117,180 @@ fn setup_entities(
     mut commands: Commands,
     level: Res<LevelLayout>,
     max_items: Option<Res<MaxItems>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    is_playable: Option<Res<IsPlayable>>,
 ) {
+    // Add camera + light
+    commands.spawn(Camera3dBundle {
+        transform: Transform::from_translation(Vec3::new(
+            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            -300.,
+            700.,
+        ))
+        .with_rotation(Quat::from_rotation_x(0.5)),
+        projection: Projection::Perspective(PerspectiveProjection {
+            fov: 0.4,
+            ..default()
+        }),
+        ..default()
+    });
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            illuminance: 2000.,
+            ..default()
+        },
+        transform: Transform::from_rotation(Quat::from_rotation_x(PI / 4.)),
+        ..default()
+    });
+
     let pursuer_tile_idx = level.get_empty();
-    commands.spawn((
-        PursuerAgent,
-        Agent::default(),
-        NextAction::default(),
-        Collider::ball(GRID_CELL_SIZE * 0.25),
-        RigidBody::KinematicPositionBased,
-        KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(
-                (pursuer_tile_idx % level.size) as f32,
-                (pursuer_tile_idx / level.size) as f32,
-                0.,
-            ) * GRID_CELL_SIZE,
-        )),
-        Observer::default(),
-        Observable,
-        DebugObserver,
-    ));
+    commands
+        .spawn((
+            PursuerAgent,
+            Agent::default(),
+            NextAction::default(),
+            Collider::ball(GRID_CELL_SIZE * 0.25),
+            RigidBody::KinematicPositionBased,
+            KinematicCharacterController::default(),
+            TransformBundle::from_transform(Transform::from_translation(
+                Vec3::new(
+                    (pursuer_tile_idx % level.size) as f32,
+                    (pursuer_tile_idx / level.size) as f32,
+                    0.,
+                ) * GRID_CELL_SIZE,
+            )),
+            Observer::default(),
+            Observable,
+            DebugObserver,
+        ))
+        .with_children(|p| {
+            if is_playable.is_some() {
+                p.spawn((
+                    AgentVisuals,
+                    SceneBundle {
+                        scene: asset_server.load("characters/cyborgFemaleA.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                            .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.4),
+                        ..default()
+                    },
+                ));
+            }
+        });
     let player_tile_idx = level.get_empty();
-    commands.spawn((
-        PlayerAgent,
-        Agent::default(),
-        NextAction::default(),
-        Collider::ball(GRID_CELL_SIZE * 0.25),
-        RigidBody::KinematicPositionBased,
-        KinematicCharacterController::default(),
-        TransformBundle::from_transform(Transform::from_translation(
-            Vec3::new(
-                (player_tile_idx % level.size) as f32,
-                (player_tile_idx / level.size) as f32,
-                0.,
-            ) * GRID_CELL_SIZE,
-        )),
-        Observer::default(),
-        Observable,
-    ));
+    commands
+        .spawn((
+            PlayerAgent,
+            Agent::default(),
+            NextAction::default(),
+            Collider::ball(GRID_CELL_SIZE * 0.25),
+            RigidBody::KinematicPositionBased,
+            KinematicCharacterController::default(),
+            TransformBundle::from_transform(Transform::from_translation(
+                Vec3::new(
+                    (player_tile_idx % level.size) as f32,
+                    (player_tile_idx / level.size) as f32,
+                    0.,
+                ) * GRID_CELL_SIZE,
+            )),
+            Observer::default(),
+            Observable,
+            DebugObserver,
+        ))
+        .with_children(|p| {
+            if is_playable.is_some() {
+                p.spawn((
+                    AgentVisuals,
+                    SceneBundle {
+                        scene: asset_server.load("characters/skaterMaleA.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                            .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.4),
+                        ..default()
+                    },
+                ));
+            }
+        });
+
+    // Add floor
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("furniture/floorFull.glb#Scene0"),
+        transform: Transform::default()
+            .with_translation(Vec3::new(-1., -1., 0.) * GRID_CELL_SIZE / 2.)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+            .with_scale(Vec3::new(level.size as f32, 1., level.size as f32) * GRID_CELL_SIZE),
+        ..default()
+    });
 
     // Set up walls and doors
+    let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE));
+    let wall_mat = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        unlit: true,
+        ..default()
+    });
     let mut rng = rand::thread_rng();
     for y in 0..level.size {
         for x in 0..level.size {
             if level.walls[y * level.size + x] {
-                commands.spawn((
-                    Wall,
-                    Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
-                    TransformBundle::from_transform(Transform::from_translation(
-                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
-                    )),
-                ));
+                commands
+                    .spawn((
+                        Wall,
+                        Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
+                        TransformBundle::from_transform(Transform::from_translation(
+                            Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
+                        )),
+                        VisibilityBundle::default(),
+                    ))
+                    .with_children(|p| {
+                        if is_playable.is_some() {
+                            let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
+                            let base_xform = Transform::default()
+                                .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
+                                .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                                .with_scale(Vec3::ONE * GRID_CELL_SIZE);
+                            for i in 0..4 {
+                                let should_spawn = match i {
+                                    3 => (y > 0) && !level.walls[(y - 1) * level.size + x],
+                                    2 => {
+                                        (y < level.size - 1)
+                                            && !level.walls[(y + 1) * level.size + x]
+                                    }
+                                    1 => (x > 0) && !level.walls[y * level.size + (x - 1)],
+                                    0 => {
+                                        (x < level.size - 1)
+                                            && !level.walls[y * level.size + (x + 1)]
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                if should_spawn {
+                                    let rot = if i >= 2 {
+                                        Quat::IDENTITY
+                                    } else {
+                                        Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                                    };
+                                    p.spawn(SceneBundle {
+                                        scene: asset_server.load("furniture/wall.glb#Scene0"),
+                                        transform: Transform::default()
+                                            .with_rotation(rot)
+                                            .with_translation(
+                                                offsets[i] * (GRID_CELL_SIZE / 2. + 0.1),
+                                            )
+                                            * base_xform,
+                                        ..default()
+                                    });
+                                }
+                            }
+                        }
+                        p.spawn(PbrBundle {
+                            mesh: wall_mesh.clone(),
+                            material: wall_mat.clone(),
+                            transform: Transform::from_translation(Vec3::Z * GRID_CELL_SIZE / 2.),
+                            ..default()
+                        });
+                    });
             } else if rng.gen_bool(DOOR_PROB) {
                 // commands.spawn((
                 //     Door::default(),
@@ -178,15 +309,49 @@ fn setup_entities(
     let wall_pos_offset = GRID_CELL_SIZE * (level.size - 1) as f32 / 2.;
     for i in 0..4 {
         let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((
-            Wall,
-            Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
-            TransformBundle::from_transform(Transform::from_translation(Vec3::new(
-                positions[i / 2],
-                positions[1 - i / 2],
-                0.,
-            ))),
-        ));
+        commands
+            .spawn((
+                Wall,
+                Collider::cuboid(half_sizes[i / 2], half_sizes[1 - i / 2]),
+                TransformBundle::from_transform(Transform::from_translation(Vec3::new(
+                    positions[i / 2],
+                    positions[1 - i / 2],
+                    0.,
+                ))),
+                VisibilityBundle::default(),
+            ))
+            .with_children(|p| {
+                if is_playable.is_some() {
+                    let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
+                    let base_xform = Transform::default()
+                        .with_translation(-Vec3::X * GRID_CELL_SIZE * level.size as f32 / 2.)
+                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                        .with_scale(Vec3::new(level.size as f32, 1., 1.) * GRID_CELL_SIZE);
+                    let rot = if i >= 2 {
+                        Quat::IDENTITY
+                    } else {
+                        Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                    };
+                    p.spawn(SceneBundle {
+                        scene: asset_server.load("furniture/wall.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(rot)
+                            .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                            * base_xform,
+                        ..default()
+                    });
+                } else {
+                    p.spawn(PbrBundle {
+                        mesh: meshes.add(Cuboid::new(
+                            half_sizes[i / 2] * 2.,
+                            half_sizes[1 - i / 2] * 2.,
+                            GRID_CELL_SIZE,
+                        )),
+                        material: wall_mat.clone(),
+                        ..default()
+                    });
+                }
+            });
     }
 
     // Add noise sources and visual markers
@@ -219,66 +384,6 @@ fn setup_entities(
 }
 
 pub const GRID_CELL_SIZE: f32 = 25.;
-
-/// Sets up entities for playable mode.
-fn setup_entities_playable(
-    mut commands: Commands,
-    level: Res<LevelLayout>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    commands.spawn(Camera2dBundle {
-        transform: Transform::from_translation(Vec3::new(
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            0.,
-        )),
-        ..default()
-    });
-
-    for y in 0..level.size {
-        for x in 0..level.size {
-            if level.walls[y * level.size + x] {
-                commands.spawn(MaterialMesh2dBundle {
-                    mesh: Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
-                    material: materials.add(Color::BLACK),
-                    transform: Transform::from_translation(
-                        Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
-                    ),
-                    ..default()
-                });
-            }
-        }
-    }
-
-    // Set up the sides of the game world
-    let wall_positions = [
-        -GRID_CELL_SIZE * 0.5,
-        GRID_CELL_SIZE * (level.size as f32 - 0.5),
-    ];
-    let wall_pos_offset = GRID_CELL_SIZE * (level.size as f32 / 2. - 0.5);
-    let anchors_offset = [
-        Vec2::new(-GRID_CELL_SIZE * level.size as f32, 0.),
-        Vec2::new(GRID_CELL_SIZE * level.size as f32, 0.),
-        Vec2::new(0., -GRID_CELL_SIZE * level.size as f32),
-        Vec2::new(0., GRID_CELL_SIZE * level.size as f32),
-    ];
-    for i in 0..4 {
-        let positions = [wall_positions[i % 2], wall_pos_offset];
-        commands.spawn((MaterialMesh2dBundle {
-            mesh: Mesh2dHandle(meshes.add(Rectangle::new(
-                GRID_CELL_SIZE * level.size as f32 * 2.,
-                GRID_CELL_SIZE * level.size as f32 * 2.,
-            ))),
-            material: materials.add(Color::BLACK),
-            transform: Transform::from_translation(
-                Vec3::new(positions[i / 2], positions[1 - i / 2], 0.)
-                    + anchors_offset[i].extend(0.),
-            ),
-            ..default()
-        },));
-    }
-}
 
 /// Adds a visual to newly created agents.
 fn visualize_agent<T: Component>(
@@ -344,15 +449,70 @@ fn set_player_action(
 
 /// Moves agents around.
 pub fn move_agents(
-    mut agent_query: Query<(&mut Agent, &mut KinematicCharacterController, &NextAction)>,
+    mut agent_query: Query<(
+        Entity,
+        &mut Agent,
+        &mut KinematicCharacterController,
+        &NextAction,
+        &Children,
+    )>,
+    child_query: Query<(Entity, Option<&Name>, Option<&Children>)>,
+    mut vis_query: Query<&mut Transform, With<AgentVisuals>>,
+    mut anim_query: Query<&mut AnimationPlayer>,
     time: Res<Time>,
+    asset_server: Res<AssetServer>,
 ) {
-    for (mut agent, mut controller, next_action) in agent_query.iter_mut() {
+    for (agent_e, mut agent, mut controller, next_action, children) in agent_query.iter_mut() {
         let dir = next_action.dir;
+        let anim_e = get_entity(&agent_e, &["", "", "Root"], &child_query);
         if dir.length_squared() > 0.1 {
             let dir = dir.normalize();
             agent.dir = dir;
             controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+            for child in children.iter() {
+                if let Ok(mut xform) = vis_query.get_mut(*child) {
+                    xform.look_to(-dir.extend(0.), Vec3::Z);
+                    if let Ok(mut anim) = anim_query.get_mut(anim_e.unwrap()) {
+                        anim.play_with_transition(
+                            asset_server.load("characters/cyborgFemaleA.glb#Animation1"),
+                            Duration::from_secs_f32(0.2),
+                        )
+                        .repeat();
+                    }
+                    break;
+                }
+            }
+        } else if let Some(anim_e) = anim_e {
+            if let Ok(mut anim) = anim_query.get_mut(anim_e) {
+                anim.play_with_transition(
+                    asset_server.load("characters/cyborgFemaleA.glb#Animation0"),
+                    Duration::from_secs_f32(0.2),
+                )
+                .repeat();
+            }
         }
     }
+}
+
+/// Returns the entity at this path.
+fn get_entity(
+    parent: &Entity,
+    path: &[&str],
+    child_query: &Query<(Entity, Option<&Name>, Option<&Children>)>,
+) -> Option<Entity> {
+    if path.is_empty() {
+        return Some(*parent);
+    }
+    if let Ok((_, _, Some(children))) = child_query.get(*parent) {
+        for child in children {
+            let (_, name, _) = child_query.get(*child).unwrap();
+            if (name.is_none() && path[0].is_empty()) || (name.unwrap().as_str() == path[0]) {
+                let e = get_entity(child, &path[1..], child_query);
+                if e.is_some() {
+                    return e;
+                }
+            }
+        }
+    }
+    None
 }

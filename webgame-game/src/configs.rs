@@ -35,9 +35,15 @@ impl Plugin for CoreGamePlugin {
 /// Adds functionality required to make the game playable (e.g. graphics and input handling).
 pub struct PlayablePlugin;
 
+/// Marker resource that indicates we are playing a playable version of the game.
+#[derive(Resource)]
+pub struct IsPlayable;
+
 impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(AssetMetaCheck::Never)
+        app.insert_resource(IsPlayable)
+            .insert_resource(AssetMetaCheck::Never)
+            .insert_resource(ClearColor(Color::BLACK))
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Your Project (Game)".into(),
@@ -57,7 +63,7 @@ pub struct ReleaseCfgPlugin;
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((PlayablePlugin, CoreGamePlugin))
-        .insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, 0.1));
+            .insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, 0.1));
     }
 }
 
