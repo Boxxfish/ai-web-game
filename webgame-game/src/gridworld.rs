@@ -1,3 +1,5 @@
+use std::{f32::consts::PI, time::Duration};
+
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
@@ -101,6 +103,10 @@ pub struct PursuerAgent;
 #[derive(Component)]
 pub struct PlayerAgent;
 
+/// The child of an `Agent` that contains its visuals.
+#[derive(Component)]
+pub struct AgentVisuals;
+
 /// Determines the maximum number of items that will be spawned.
 /// If this resource is not found, no items are spawned.
 #[derive(Resource)]
@@ -120,10 +126,10 @@ fn setup_entities(
     commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(Vec3::new(
             GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            -300.,
             700.,
         ))
-        .looking_to(-Vec3::Z, Vec3::Y),
+        .with_rotation(Quat::from_rotation_x(0.5)),
         projection: Projection::Perspective(PerspectiveProjection {
             fov: 0.4,
             ..default()
@@ -135,6 +141,7 @@ fn setup_entities(
             illuminance: 2000.,
             ..default()
         },
+        transform: Transform::from_rotation(Quat::from_rotation_x(PI / 4.)),
         ..default()
     });
 
@@ -160,13 +167,16 @@ fn setup_entities(
         ))
         .with_children(|p| {
             if is_playable.is_some() {
-                p.spawn(SceneBundle {
-                    scene: asset_server.load("characters/cyborgFemaleA.glb#Scene0"),
-                    transform: Transform::default()
-                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
-                        .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.5),
-                    ..default()
-                });
+                p.spawn((
+                    AgentVisuals,
+                    SceneBundle {
+                        scene: asset_server.load("characters/cyborgFemaleA.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                            .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.4),
+                        ..default()
+                    },
+                ));
             }
         });
     let player_tile_idx = level.get_empty();
@@ -191,13 +201,16 @@ fn setup_entities(
         ))
         .with_children(|p| {
             if is_playable.is_some() {
-                p.spawn(SceneBundle {
-                    scene: asset_server.load("characters/skaterMaleA.glb#Scene0"),
-                    transform: Transform::default()
-                        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
-                        .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.5),
-                    ..default()
-                });
+                p.spawn((
+                    AgentVisuals,
+                    SceneBundle {
+                        scene: asset_server.load("characters/skaterMaleA.glb#Scene0"),
+                        transform: Transform::default()
+                            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                            .with_scale(Vec3::ONE * GRID_CELL_SIZE * 0.4),
+                        ..default()
+                    },
+                ));
             }
         });
 
@@ -262,7 +275,9 @@ fn setup_entities(
                                         scene: asset_server.load("furniture/wall.glb#Scene0"),
                                         transform: Transform::default()
                                             .with_rotation(rot)
-                                            .with_translation(offsets[i] * (GRID_CELL_SIZE / 2. + 0.1))
+                                            .with_translation(
+                                                offsets[i] * (GRID_CELL_SIZE / 2. + 0.1),
+                                            )
                                             * base_xform,
                                         ..default()
                                     });
@@ -434,15 +449,70 @@ fn set_player_action(
 
 /// Moves agents around.
 pub fn move_agents(
-    mut agent_query: Query<(&mut Agent, &mut KinematicCharacterController, &NextAction)>,
+    mut agent_query: Query<(
+        Entity,
+        &mut Agent,
+        &mut KinematicCharacterController,
+        &NextAction,
+        &Children,
+    )>,
+    child_query: Query<(Entity, Option<&Name>, Option<&Children>)>,
+    mut vis_query: Query<&mut Transform, With<AgentVisuals>>,
+    mut anim_query: Query<&mut AnimationPlayer>,
     time: Res<Time>,
+    asset_server: Res<AssetServer>,
 ) {
-    for (mut agent, mut controller, next_action) in agent_query.iter_mut() {
+    for (agent_e, mut agent, mut controller, next_action, children) in agent_query.iter_mut() {
         let dir = next_action.dir;
+        let anim_e = get_entity(&agent_e, &["", "", "Root"], &child_query);
         if dir.length_squared() > 0.1 {
             let dir = dir.normalize();
             agent.dir = dir;
             controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+            for child in children.iter() {
+                if let Ok(mut xform) = vis_query.get_mut(*child) {
+                    xform.look_to(-dir.extend(0.), Vec3::Z);
+                    if let Ok(mut anim) = anim_query.get_mut(anim_e.unwrap()) {
+                        anim.play_with_transition(
+                            asset_server.load("characters/cyborgFemaleA.glb#Animation1"),
+                            Duration::from_secs_f32(0.2),
+                        )
+                        .repeat();
+                    }
+                    break;
+                }
+            }
+        } else if let Some(anim_e) = anim_e {
+            if let Ok(mut anim) = anim_query.get_mut(anim_e) {
+                anim.play_with_transition(
+                    asset_server.load("characters/cyborgFemaleA.glb#Animation0"),
+                    Duration::from_secs_f32(0.2),
+                )
+                .repeat();
+            }
         }
     }
+}
+
+/// Returns the entity at this path.
+fn get_entity(
+    parent: &Entity,
+    path: &[&str],
+    child_query: &Query<(Entity, Option<&Name>, Option<&Children>)>,
+) -> Option<Entity> {
+    if path.is_empty() {
+        return Some(*parent);
+    }
+    if let Ok((_, _, Some(children))) = child_query.get(*parent) {
+        for child in children {
+            let (_, name, _) = child_query.get(*child).unwrap();
+            if (name.is_none() && path[0].is_empty()) || (name.unwrap().as_str() == path[0]) {
+                let e = get_entity(child, &path[1..], child_query);
+                if e.is_some() {
+                    return e;
+                }
+            }
+        }
+    }
+    None
 }
