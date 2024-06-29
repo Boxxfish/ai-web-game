@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLayout, DEFAULT_LEVEL_SIZE},
+    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLayout, LevelLoader, DEFAULT_LEVEL_SIZE},
     net::NetPlugin,
     observer::{ObserverPlayPlugin, ObserverPlugin},
     world_objs::WorldObjPlugin,
@@ -52,7 +52,7 @@ impl Plugin for PlayablePlugin {
                 }),
                 ..default()
             }))
-            .add_plugins(RapierDebugRenderPlugin::default())
+            // .add_plugins(RapierDebugRenderPlugin::default())
             .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin));
     }
 }
@@ -63,7 +63,7 @@ pub struct ReleaseCfgPlugin;
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((PlayablePlugin, CoreGamePlugin))
-            .insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, 0.1));
+            .insert_resource(LevelLoader::Path("levels/test.json".into()));
     }
 }
 

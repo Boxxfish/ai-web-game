@@ -1,8 +1,10 @@
 use std::{f32::consts::PI, time::Duration};
 
 use bevy::{
+    asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext},
     prelude::*,
-    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    sprite::Mesh2dHandle,
+    utils::BoxedFuture,
 };
 use bevy_rapier2d::{
     control::KinematicCharacterController,
@@ -10,6 +12,8 @@ use bevy_rapier2d::{
     geometry::Collider,
 };
 use rand::{seq::IteratorRandom, Rng};
+use serde::Deserialize;
+use thiserror::Error;
 
 use crate::{
     configs::IsPlayable,
@@ -22,12 +26,16 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_entities).add_systems(
+        app.add_systems(
             Update,
             (
-                move_agents,
-                visualize_agent::<PursuerAgent>(Color::RED),
-                visualize_agent::<PlayerAgent>(Color::GREEN),
+                setup_entities.run_if(resource_added::<LevelLayout>),
+                (
+                    move_agents,
+                    visualize_agent::<PursuerAgent>(Color::RED),
+                    visualize_agent::<PlayerAgent>(Color::GREEN),
+                )
+                    .run_if(resource_exists::<ShouldRun>),
             ),
         );
     }
@@ -38,7 +46,15 @@ pub struct GridworldPlayPlugin;
 
 impl Plugin for GridworldPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, set_player_action);
+        app.init_asset::<LoadedLevelData>()
+            .init_asset_loader::<LoadedLevelDataLoader>()
+            .add_systems(
+                Update,
+                (
+                    load_level,
+                    set_player_action.run_if(resource_exists::<ShouldRun>),
+                ),
+            );
     }
 }
 
@@ -46,6 +62,102 @@ impl Plugin for GridworldPlayPlugin {
 pub const DEFAULT_LEVEL_SIZE: usize = 8;
 /// The probability of a door spawning in an empty cell.
 pub const DOOR_PROB: f64 = 0.05;
+
+/// Data for objects in levels.
+#[derive(Deserialize)]
+pub struct LoadedObjData {
+    pub name: String,
+    pub pos: (usize, usize),
+    #[serde(default)]
+    pub dir: Option<String>,
+    #[serde(default)]
+    pub movable: bool,
+}
+
+/// Data for loaded levels.
+#[derive(Deserialize, Asset, TypePath)]
+pub struct LoadedLevelData {
+    pub size: usize,
+    pub walls: Vec<u8>,
+    pub objects: Vec<LoadedObjData>,
+}
+
+/// Indicates that a level should be loaded.
+#[derive(Resource)]
+pub enum LevelLoader {
+    Path(String),
+    Asset(Handle<LoadedLevelData>),
+}
+
+#[derive(Default)]
+struct LoadedLevelDataLoader;
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum LoadedLevelDataLoaderError {
+    #[error("Could not load asset: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Could not parse JSON: {0}")]
+    RonSpannedError(#[from] serde_json::error::Error),
+}
+
+impl AssetLoader for LoadedLevelDataLoader {
+    type Asset = LoadedLevelData;
+    type Settings = ();
+    type Error = LoadedLevelDataLoaderError;
+    fn load<'a>(
+        &'a self,
+        reader: &'a mut Reader,
+        _settings: &'a (),
+        _load_context: &'a mut LoadContext,
+    ) -> BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
+        Box::pin(async move {
+            let mut buf = String::new();
+            reader.read_to_string(&mut buf).await?;
+            let data: LoadedLevelData = serde_json::from_str(&buf)?;
+            Ok(data)
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &[".json"]
+    }
+}
+
+/// Loads levels.
+fn load_level(
+    level: Option<Res<LevelLoader>>,
+    level_data: Res<Assets<LoadedLevelData>>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    if let Some(level) = level {
+        match level.as_ref() {
+            LevelLoader::Path(path) => {
+                commands.insert_resource(LevelLoader::Asset(asset_server.load(path)));
+            }
+            LevelLoader::Asset(handle) => {
+                if let Some(level) = level_data.get(handle.clone()) {
+                    let mut walls = Vec::new();
+                    for y in 0..level.size {
+                        for x in 0..level.size {
+                            walls.push(level.walls[(level.size - y - 1) * level.size + x] != 0);
+                        }
+                    }
+                    commands.insert_resource(LevelLayout {
+                        walls,
+                        size: level.size,
+                    });
+                    commands.remove_resource::<LevelLoader>();
+                }
+            }
+        }
+    }
+}
+
+/// Indicates that the game should begin running.
+#[derive(Resource)]
+pub struct ShouldRun;
 
 /// Stores the layout of the level.
 #[derive(Resource)]
@@ -125,7 +237,7 @@ fn setup_entities(
     // Add camera + light
     commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(Vec3::new(
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            GRID_CELL_SIZE * (((level.size + 1) / 2) as f32),
             -300.,
             700.,
         ))
@@ -251,7 +363,7 @@ fn setup_entities(
                                 .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
                                 .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
                                 .with_scale(Vec3::ONE * GRID_CELL_SIZE);
-                            for i in 0..4 {
+                            for (i, offset) in offsets.iter().enumerate() {
                                 let should_spawn = match i {
                                     3 => (y > 0) && !level.walls[(y - 1) * level.size + x],
                                     2 => {
@@ -276,7 +388,7 @@ fn setup_entities(
                                         transform: Transform::default()
                                             .with_rotation(rot)
                                             .with_translation(
-                                                offsets[i] * (GRID_CELL_SIZE / 2. + 0.1),
+                                                *offset * (GRID_CELL_SIZE / 2. + 0.1),
                                             )
                                             * base_xform,
                                         ..default()
@@ -381,6 +493,9 @@ fn setup_entities(
             ));
         }
     }
+
+    // Indicate we should start the game
+    commands.insert_resource(ShouldRun);
 }
 
 pub const GRID_CELL_SIZE: f32 = 25.;

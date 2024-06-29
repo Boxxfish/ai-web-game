@@ -1,4 +1,5 @@
 #![allow(clippy::type_complexity)]
+#![feature(iter_array_chunks)]
 
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
