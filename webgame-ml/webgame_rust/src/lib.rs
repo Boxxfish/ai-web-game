@@ -6,7 +6,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{
-        Agent, LevelLayout, MaxItems, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
+        Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
         GRID_CELL_SIZE,
     },
     observer::{Observable, Observer},
@@ -144,11 +144,11 @@ impl GameWrapper {
     ) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
-        app.insert_resource(LevelLayout::random(DEFAULT_LEVEL_SIZE, wall_prob));
-
-        if use_objs {
-            app.insert_resource(MaxItems(DEFAULT_LEVEL_SIZE));
-        }
+        app.insert_resource(LevelLayout::random(
+            DEFAULT_LEVEL_SIZE,
+            wall_prob,
+            if use_objs { DEFAULT_LEVEL_SIZE } else { 0 },
+        ));
 
         if visualize {
             app.add_plugins(VisualizerPlugin {
