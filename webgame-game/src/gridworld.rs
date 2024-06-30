@@ -64,7 +64,7 @@ pub const DEFAULT_LEVEL_SIZE: usize = 8;
 pub const DOOR_PROB: f64 = 0.05;
 
 /// Data for objects in levels.
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct LoadedObjData {
     pub name: String,
     pub pos: (usize, usize),
@@ -147,6 +147,7 @@ fn load_level(
                     commands.insert_resource(LevelLayout {
                         walls,
                         size: level.size,
+                        objects: level.objects.clone(),
                     });
                     commands.remove_resource::<LevelLoader>();
                 }
@@ -165,17 +166,36 @@ pub struct LevelLayout {
     /// Stores `true` if a wall exists, `false` for empty spaces. The first element is the top right corner.
     pub walls: Vec<bool>,
     pub size: usize,
+    pub objects: Vec<LoadedObjData>,
 }
 
 impl LevelLayout {
     /// Generates a randomized level.
-    pub fn random(size: usize, wall_prob: f64) -> Self {
+    pub fn random(size: usize, wall_prob: f64, max_items: usize) -> Self {
         let mut rng = rand::thread_rng();
-        Self {
+        let orig = Self {
             walls: (0..(size * size))
                 .map(|_| rng.gen_bool(wall_prob))
                 .collect(),
             size,
+            objects: Vec::new(),
+        };
+        let mut objects = Vec::new();
+        for _ in 0..rng.gen_range(0..max_items) {
+            let tile_idx = orig.get_empty();
+            let y = tile_idx / size;
+            let x = tile_idx % size;
+            objects.push(LoadedObjData {
+                name: "".into(),
+                pos: (x, y),
+                dir: Some("left".into()),
+                movable: true,
+            });
+        }
+        Self {
+            walls: orig.walls,
+            size,
+            objects,
         }
     }
 
@@ -219,16 +239,10 @@ pub struct PlayerAgent;
 #[derive(Component)]
 pub struct AgentVisuals;
 
-/// Determines the maximum number of items that will be spawned.
-/// If this resource is not found, no items are spawned.
-#[derive(Resource)]
-pub struct MaxItems(pub usize);
-
 /// Sets up all entities in the game.
 fn setup_entities(
     mut commands: Commands,
     level: Res<LevelLayout>,
-    max_items: Option<Res<MaxItems>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
@@ -467,31 +481,42 @@ fn setup_entities(
     }
 
     // Add noise sources and visual markers
-    if let Some(max_items) = max_items {
-        for _ in 0..rng.gen_range(0..max_items.0) {
-            let tile_idx = level.get_empty();
-            let y = tile_idx / level.size;
-            let x = tile_idx % level.size;
-            let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
-                + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
-            commands.spawn((
-                RigidBody::Dynamic,
-                Damping {
-                    linear_damping: 10.,
-                    ..default()
-                },
-                LockedAxes::ROTATION_LOCKED,
-                Collider::cuboid(GRID_CELL_SIZE * 0.4, GRID_CELL_SIZE * 0.4),
-                NoiseSource {
-                    noise_radius: GRID_CELL_SIZE * 3.,
-                    active_radius: GRID_CELL_SIZE * 1.5,
-                    activated_by: None,
-                },
-                VisualMarker,
-                Observable,
-                TransformBundle::from_transform(Transform::from_translation(pos)),
-            ));
-        }
+    let obj_mat = materials.add(StandardMaterial {
+        base_color: Color::BLUE,
+        unlit: true,
+        ..default()
+    });
+    for obj in &level.objects {
+        let (x, y) = obj.pos;
+        let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
+        let collider_size = GRID_CELL_SIZE * 0.8;
+        commands.spawn((
+            RigidBody::Dynamic,
+            Damping {
+                linear_damping: 10.,
+                ..default()
+            },
+            LockedAxes::ROTATION_LOCKED,
+            Collider::cuboid(collider_size / 2., collider_size / 2.),
+            NoiseSource {
+                noise_radius: GRID_CELL_SIZE * 3.,
+                active_radius: GRID_CELL_SIZE * 1.5,
+                activated_by: None,
+            },
+            VisualMarker,
+            Observable,
+            TransformBundle::from_transform(Transform::from_translation(pos)),
+        )).with_children(|p| {
+            p.spawn(PbrBundle {
+                mesh: meshes.add(Cuboid::new(
+                    collider_size,
+                    collider_size,
+                    collider_size,
+                )),
+                material: obj_mat.clone(),
+                ..default()
+            });
+        });
     }
 
     // Indicate we should start the game

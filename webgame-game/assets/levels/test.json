@@ -13,12 +13,12 @@
     "objects": [
         {
             "name": "pottedPlant",
-            "pos": [0, 3],
+            "pos": [0, 4],
             "movable": true
         },
         {
-            "name": "fridge",
-            "pos": [5, 4],
+            "name": "bathroomCabinet",
+            "pos": [5, 3],
             "dir": "down"
         }
     ]
