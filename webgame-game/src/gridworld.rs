@@ -480,7 +480,7 @@ fn setup_entities(
             });
     }
 
-    // Add noise sources and visual markers
+    // Add objects, which may include noise sources and visual markers
     let obj_mat = materials.add(StandardMaterial {
         base_color: Color::BLUE,
         unlit: true,
@@ -490,32 +490,55 @@ fn setup_entities(
         let (x, y) = obj.pos;
         let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
         let collider_size = GRID_CELL_SIZE * 0.8;
-        commands.spawn((
-            RigidBody::Dynamic,
-            Damping {
-                linear_damping: 10.,
-                ..default()
-            },
-            LockedAxes::ROTATION_LOCKED,
-            Collider::cuboid(collider_size / 2., collider_size / 2.),
-            NoiseSource {
-                noise_radius: GRID_CELL_SIZE * 3.,
-                active_radius: GRID_CELL_SIZE * 1.5,
-                activated_by: None,
-            },
-            VisualMarker,
-            Observable,
-            TransformBundle::from_transform(Transform::from_translation(pos)),
-        )).with_children(|p| {
-            p.spawn(PbrBundle {
-                mesh: meshes.add(Cuboid::new(
-                    collider_size,
-                    collider_size,
-                    collider_size,
-                )),
-                material: obj_mat.clone(),
-                ..default()
-            });
+        let e = commands
+            .spawn((
+                Collider::cuboid(collider_size / 2., collider_size / 2.),
+                TransformBundle::from_transform(Transform::from_translation(pos)),
+                VisibilityBundle::default(),
+            ))
+            .id();
+        if obj.movable {
+            commands.entity(e).insert((
+                RigidBody::Dynamic,
+                Damping {
+                    linear_damping: 10.,
+                    ..default()
+                },
+                LockedAxes::ROTATION_LOCKED,
+                NoiseSource {
+                    noise_radius: GRID_CELL_SIZE * 3.,
+                    active_radius: GRID_CELL_SIZE * 1.5,
+                    activated_by: None,
+                },
+                VisualMarker,
+                Observable,
+            ));
+        }
+        commands.entity(e).with_children(|p| {
+            if is_playable.is_some() {
+                let base_xform = Transform::default()
+                    .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
+                    .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                    .with_scale(Vec3::ONE * GRID_CELL_SIZE * 2.);
+                let rot = match obj.dir.clone().unwrap_or("left".into()).as_str() {
+                    "left" => Quat::from_rotation_z(std::f32::consts::PI * 3. / 2.),
+                    "up" => Quat::from_rotation_z(std::f32::consts::PI),
+                    "right" => Quat::from_rotation_z(std::f32::consts::PI / 2.),
+                    "down" => Quat::IDENTITY,
+                    _ => unimplemented!(),
+                };
+                p.spawn(SceneBundle {
+                    scene: asset_server.load(format!("furniture/{}.glb#Scene0", obj.name)),
+                    transform: Transform::default().with_rotation(rot) * base_xform,
+                    ..default()
+                });
+            } else {
+                p.spawn(PbrBundle {
+                    mesh: meshes.add(Cuboid::new(collider_size, collider_size, collider_size)),
+                    material: obj_mat.clone(),
+                    ..default()
+                });
+            }
         });
     }
 

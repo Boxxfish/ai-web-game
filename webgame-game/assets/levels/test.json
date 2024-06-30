@@ -17,7 +17,19 @@
             "movable": true
         },
         {
-            "name": "bathroomCabinet",
+            "name": "chair",
+            "pos": [0, 2],
+            "movable": true,
+            "dir": "down"
+        },
+        {
+            "name": "chair",
+            "pos": [2, 2],
+            "movable": true,
+            "dir": "down"
+        },
+        {
+            "name": "bathroomCabinetDrawer",
             "pos": [5, 3],
             "dir": "down"
         }
