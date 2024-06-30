@@ -6550,6 +6550,7 @@ dependencies = [
  "revy",
  "safetensors",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

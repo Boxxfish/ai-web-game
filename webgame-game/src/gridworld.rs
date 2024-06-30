@@ -1,8 +1,10 @@
 use std::{f32::consts::PI, time::Duration};
 
 use bevy::{
+    asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext},
     prelude::*,
-    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    sprite::Mesh2dHandle,
+    utils::BoxedFuture,
 };
 use bevy_rapier2d::{
     control::KinematicCharacterController,
@@ -10,6 +12,8 @@ use bevy_rapier2d::{
     geometry::Collider,
 };
 use rand::{seq::IteratorRandom, Rng};
+use serde::Deserialize;
+use thiserror::Error;
 
 use crate::{
     configs::IsPlayable,
@@ -22,12 +26,16 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_entities).add_systems(
+        app.add_systems(
             Update,
             (
-                move_agents,
-                visualize_agent::<PursuerAgent>(Color::RED),
-                visualize_agent::<PlayerAgent>(Color::GREEN),
+                setup_entities.run_if(resource_added::<LevelLayout>),
+                (
+                    move_agents,
+                    visualize_agent::<PursuerAgent>(Color::RED),
+                    visualize_agent::<PlayerAgent>(Color::GREEN),
+                )
+                    .run_if(resource_exists::<ShouldRun>),
             ),
         );
     }
@@ -38,7 +46,15 @@ pub struct GridworldPlayPlugin;
 
 impl Plugin for GridworldPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, set_player_action);
+        app.init_asset::<LoadedLevelData>()
+            .init_asset_loader::<LoadedLevelDataLoader>()
+            .add_systems(
+                Update,
+                (
+                    load_level,
+                    set_player_action.run_if(resource_exists::<ShouldRun>),
+                ),
+            );
     }
 }
 
@@ -47,23 +63,139 @@ pub const DEFAULT_LEVEL_SIZE: usize = 8;
 /// The probability of a door spawning in an empty cell.
 pub const DOOR_PROB: f64 = 0.05;
 
+/// Data for objects in levels.
+#[derive(Deserialize, Clone)]
+pub struct LoadedObjData {
+    pub name: String,
+    pub pos: (usize, usize),
+    #[serde(default)]
+    pub dir: Option<String>,
+    #[serde(default)]
+    pub movable: bool,
+}
+
+/// Data for loaded levels.
+#[derive(Deserialize, Asset, TypePath)]
+pub struct LoadedLevelData {
+    pub size: usize,
+    pub walls: Vec<u8>,
+    pub objects: Vec<LoadedObjData>,
+}
+
+/// Indicates that a level should be loaded.
+#[derive(Resource)]
+pub enum LevelLoader {
+    Path(String),
+    Asset(Handle<LoadedLevelData>),
+}
+
+#[derive(Default)]
+struct LoadedLevelDataLoader;
+
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum LoadedLevelDataLoaderError {
+    #[error("Could not load asset: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Could not parse JSON: {0}")]
+    RonSpannedError(#[from] serde_json::error::Error),
+}
+
+impl AssetLoader for LoadedLevelDataLoader {
+    type Asset = LoadedLevelData;
+    type Settings = ();
+    type Error = LoadedLevelDataLoaderError;
+    fn load<'a>(
+        &'a self,
+        reader: &'a mut Reader,
+        _settings: &'a (),
+        _load_context: &'a mut LoadContext,
+    ) -> BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
+        Box::pin(async move {
+            let mut buf = String::new();
+            reader.read_to_string(&mut buf).await?;
+            let data: LoadedLevelData = serde_json::from_str(&buf)?;
+            Ok(data)
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &[".json"]
+    }
+}
+
+/// Loads levels.
+fn load_level(
+    level: Option<Res<LevelLoader>>,
+    level_data: Res<Assets<LoadedLevelData>>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    if let Some(level) = level {
+        match level.as_ref() {
+            LevelLoader::Path(path) => {
+                commands.insert_resource(LevelLoader::Asset(asset_server.load(path)));
+            }
+            LevelLoader::Asset(handle) => {
+                if let Some(level) = level_data.get(handle.clone()) {
+                    let mut walls = Vec::new();
+                    for y in 0..level.size {
+                        for x in 0..level.size {
+                            walls.push(level.walls[(level.size - y - 1) * level.size + x] != 0);
+                        }
+                    }
+                    commands.insert_resource(LevelLayout {
+                        walls,
+                        size: level.size,
+                        objects: level.objects.clone(),
+                    });
+                    commands.remove_resource::<LevelLoader>();
+                }
+            }
+        }
+    }
+}
+
+/// Indicates that the game should begin running.
+#[derive(Resource)]
+pub struct ShouldRun;
+
 /// Stores the layout of the level.
 #[derive(Resource)]
 pub struct LevelLayout {
     /// Stores `true` if a wall exists, `false` for empty spaces. The first element is the top right corner.
     pub walls: Vec<bool>,
     pub size: usize,
+    pub objects: Vec<LoadedObjData>,
 }
 
 impl LevelLayout {
     /// Generates a randomized level.
-    pub fn random(size: usize, wall_prob: f64) -> Self {
+    pub fn random(size: usize, wall_prob: f64, max_items: usize) -> Self {
         let mut rng = rand::thread_rng();
-        Self {
+        let orig = Self {
             walls: (0..(size * size))
                 .map(|_| rng.gen_bool(wall_prob))
                 .collect(),
             size,
+            objects: Vec::new(),
+        };
+        let mut objects = Vec::new();
+        for _ in 0..rng.gen_range(0..max_items) {
+            let tile_idx = orig.get_empty();
+            let y = tile_idx / size;
+            let x = tile_idx % size;
+            objects.push(LoadedObjData {
+                name: "".into(),
+                pos: (x, y),
+                dir: Some("left".into()),
+                movable: true,
+            });
+        }
+        Self {
+            walls: orig.walls,
+            size,
+            objects,
         }
     }
 
@@ -107,16 +239,10 @@ pub struct PlayerAgent;
 #[derive(Component)]
 pub struct AgentVisuals;
 
-/// Determines the maximum number of items that will be spawned.
-/// If this resource is not found, no items are spawned.
-#[derive(Resource)]
-pub struct MaxItems(pub usize);
-
 /// Sets up all entities in the game.
 fn setup_entities(
     mut commands: Commands,
     level: Res<LevelLayout>,
-    max_items: Option<Res<MaxItems>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
@@ -125,7 +251,7 @@ fn setup_entities(
     // Add camera + light
     commands.spawn(Camera3dBundle {
         transform: Transform::from_translation(Vec3::new(
-            GRID_CELL_SIZE * ((level.size / 2) as f32 - 0.5),
+            GRID_CELL_SIZE * (((level.size + 1) / 2) as f32),
             -300.,
             700.,
         ))
@@ -251,7 +377,7 @@ fn setup_entities(
                                 .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
                                 .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
                                 .with_scale(Vec3::ONE * GRID_CELL_SIZE);
-                            for i in 0..4 {
+                            for (i, offset) in offsets.iter().enumerate() {
                                 let should_spawn = match i {
                                     3 => (y > 0) && !level.walls[(y - 1) * level.size + x],
                                     2 => {
@@ -276,7 +402,7 @@ fn setup_entities(
                                         transform: Transform::default()
                                             .with_rotation(rot)
                                             .with_translation(
-                                                offsets[i] * (GRID_CELL_SIZE / 2. + 0.1),
+                                                *offset * (GRID_CELL_SIZE / 2. + 0.1),
                                             )
                                             * base_xform,
                                         ..default()
@@ -354,22 +480,31 @@ fn setup_entities(
             });
     }
 
-    // Add noise sources and visual markers
-    if let Some(max_items) = max_items {
-        for _ in 0..rng.gen_range(0..max_items.0) {
-            let tile_idx = level.get_empty();
-            let y = tile_idx / level.size;
-            let x = tile_idx % level.size;
-            let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE
-                + Vec3::new(rng.gen::<f32>() - 0.5, rng.gen::<f32>() - 0.5, 0.) * GRID_CELL_SIZE;
-            commands.spawn((
+    // Add objects, which may include noise sources and visual markers
+    let obj_mat = materials.add(StandardMaterial {
+        base_color: Color::BLUE,
+        unlit: true,
+        ..default()
+    });
+    for obj in &level.objects {
+        let (x, y) = obj.pos;
+        let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
+        let collider_size = GRID_CELL_SIZE * 0.8;
+        let e = commands
+            .spawn((
+                Collider::cuboid(collider_size / 2., collider_size / 2.),
+                TransformBundle::from_transform(Transform::from_translation(pos)),
+                VisibilityBundle::default(),
+            ))
+            .id();
+        if obj.movable {
+            commands.entity(e).insert((
                 RigidBody::Dynamic,
                 Damping {
                     linear_damping: 10.,
                     ..default()
                 },
                 LockedAxes::ROTATION_LOCKED,
-                Collider::cuboid(GRID_CELL_SIZE * 0.4, GRID_CELL_SIZE * 0.4),
                 NoiseSource {
                     noise_radius: GRID_CELL_SIZE * 3.,
                     active_radius: GRID_CELL_SIZE * 1.5,
@@ -377,10 +512,38 @@ fn setup_entities(
                 },
                 VisualMarker,
                 Observable,
-                TransformBundle::from_transform(Transform::from_translation(pos)),
             ));
         }
+        commands.entity(e).with_children(|p| {
+            if is_playable.is_some() {
+                let base_xform = Transform::default()
+                    .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
+                    .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                    .with_scale(Vec3::ONE * GRID_CELL_SIZE * 2.);
+                let rot = match obj.dir.clone().unwrap_or("left".into()).as_str() {
+                    "left" => Quat::from_rotation_z(std::f32::consts::PI * 3. / 2.),
+                    "up" => Quat::from_rotation_z(std::f32::consts::PI),
+                    "right" => Quat::from_rotation_z(std::f32::consts::PI / 2.),
+                    "down" => Quat::IDENTITY,
+                    _ => unimplemented!(),
+                };
+                p.spawn(SceneBundle {
+                    scene: asset_server.load(format!("furniture/{}.glb#Scene0", obj.name)),
+                    transform: Transform::default().with_rotation(rot) * base_xform,
+                    ..default()
+                });
+            } else {
+                p.spawn(PbrBundle {
+                    mesh: meshes.add(Cuboid::new(collider_size, collider_size, collider_size)),
+                    material: obj_mat.clone(),
+                    ..default()
+                });
+            }
+        });
     }
+
+    // Indicate we should start the game
+    commands.insert_resource(ShouldRun);
 }
 
 pub const GRID_CELL_SIZE: f32 = 25.;

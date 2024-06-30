@@ -16,8 +16,8 @@ impl Plugin for WorldObjPlugin {
                 update_door,
                 visualize_door,
                 update_noise_src,
-                visualize_noise_src,
-                visualize_visual_marker,
+                // visualize_noise_src,
+                // visualize_visual_marker,
             ),
         );
     }
@@ -123,9 +123,19 @@ fn update_noise_src(
 fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform, &NoiseSource)>) {
     for (obj_xform, noise) in noise_query.iter() {
         let obj_pos = obj_xform.translation().xy();
-        gizmos.circle_2d(obj_pos, noise.active_radius, Color::BLUE);
+        gizmos.circle(
+            obj_pos.extend(GRID_CELL_SIZE),
+            Direction3d::Z,
+            noise.active_radius,
+            Color::BLUE,
+        );
         if noise.activated_by.is_some() {
-            gizmos.circle_2d(obj_pos, noise.noise_radius, Color::ORANGE);
+            gizmos.circle(
+                obj_pos.extend(GRID_CELL_SIZE),
+                Direction3d::Z,
+                noise.noise_radius,
+                Color::ORANGE,
+            );
         }
     }
 }
@@ -142,6 +152,11 @@ fn visualize_visual_marker(
 ) {
     for (obj_xform, visual) in visual_query.iter() {
         let obj_pos = obj_xform.translation().xy();
-        gizmos.rect_2d(obj_pos, 0., Vec2::ONE * GRID_CELL_SIZE * 0.5, Color::RED);
+        gizmos.rect(
+            obj_pos.extend(GRID_CELL_SIZE),
+            Quat::IDENTITY,
+            Vec2::ONE * GRID_CELL_SIZE * 0.5,
+            Color::RED,
+        );
     }
 }
