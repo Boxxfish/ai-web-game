@@ -35,6 +35,7 @@ impl Module for BatchNorm2d {
 pub struct Backbone {
     pub grid_net: nn::Sequential,
     pub pos: Tensor,
+    pub use_pos: bool,
 }
 
 impl Backbone {
@@ -133,69 +134,77 @@ impl Backbone {
         //     self.bn3 = nn.BatchNorm1d(out_channels)
         // }
 
-        Ok(Self { grid_net, pos })
+        Ok(Self {
+            grid_net,
+            pos,
+            use_pos,
+        })
     }
 }
 
-//         impl Module for Backbone {
-//     fn forward(
-//         self,
-//         grid: Tensor,  // Shape: (batch_size, channels, size, size)
-//         objs: Optional[Tensor],  // Shape: (batch_size, max_obj_size, obj_dim)
-//         objs_attn_mask: Optional[Tensor],  // Shape: (batch_size, max_obj_size)
-//     ) -> Tensor{  // Shape: (batch_size, grid_features_dim, grid_size, grid_size) {
-//         // Concat pos encoding to grid
-//         device = grid.device
-//         if self.use_pos:
-//             grid = torch.concat(
-//                 [
-//                     grid,
-//                     self.pos.unsqueeze(0)
-//                     .tile([grid.shape[0], 1, 1, 1])
-//                     .to(device=device),
-//                 ],
-//                 dim=1,
-//             )
-//         grid_features = self.grid_net(
-//             grid
-//         )  // Shape: (batch_size, grid_features_dim, grid_size, grid_size)
+impl Backbone {
+    fn forward(
+        self,
+        grid: &Tensor,                   // Shape: (batch_size, channels, size, size)
+        objs: Option<&Tensor>,           // Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
+    ) -> candle_core::Result<Tensor> {
+        // Shape: (batch_size, grid_features_dim, grid_size, grid_size) {
+        // Concat pos encoding to grid
+        let device = grid.device();
+        let mut grid = grid.clone();
+        let batch_size = grid.shape().dims()[0];
+        if self.use_pos {
+            grid = Tensor::cat(
+                &[
+                    grid,
+                    self.pos
+                        .unsqueeze(0)?
+                        .repeat(&[batch_size, 1, 1, 1])?
+                        .to_device(device)?,
+                ],
+                1,
+            )?;
+        }
+        let grid_features = self.grid_net.forward(&grid)?; // Shape: (batch_size, grid_features_dim, grid_size, grid_size)
 
-//         if self.use_objs:
-//             assert objs is not None
-//             assert objs_attn_mask is not None
-//             objs = self.proj(objs.permute(0, 2, 1)).permute(
-//                 0, 2, 1
-//             )  // Shape: (batch_size, max_obj_size, proj_dim)
-//             grid_features = grid_features.permute(
-//                 0, 2, 3, 1
-//             )  // Shape: (batch_size, grid_size, grid_size, grid_features_dim)
-//             orig_shape = grid_features.shape
-//             grid_features = grid_features.flatten(
-//                 1, 2
-//             )  // Shape: (batch_size, grid_size * grid_size, grid_features_dim)
-//             attns = [self.attn1, self.attn2, self.attn3]
-//             bns = [self.bn1, self.bn2, self.bn3]
-//             for attn, bn in zip(attns, bns):
-//                 attn_grid_features = torch.nan_to_num(
-//                     attn(
-//                         query=grid_features,
-//                         key=objs,
-//                         value=objs,
-//                         key_padding_mask=objs_attn_mask,
-//                     )[0],
-//                     0.0,
-//                 )  // Sometimes there are no objects, causing NANs
-//                 grid_features = grid_features + attn_grid_features
-//                 if self.use_bn:
-//                     grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
-//                 grid_features = nn.functional.silu(grid_features)
-//             grid_features = grid_features.view(orig_shape).permute(
-//                 0, 3, 1, 2
-//             )  // Shape: (batch_size, grid_features_dim, grid_size, grid_size)
+        // if self.use_objs {
+        //     assert objs is not None;
+        //     assert objs_attn_mask is not None;
+        //     objs = self.proj(objs.permute(0, 2, 1)).permute(
+        //         0, 2, 1
+        //     )  // Shape: (batch_size, max_obj_size, proj_dim)
+        //     grid_features = grid_features.permute(
+        //         0, 2, 3, 1
+        //     )  // Shape: (batch_size, grid_size, grid_size, grid_features_dim)
+        //     orig_shape = grid_features.shape
+        //     grid_features = grid_features.flatten(
+        //         1, 2
+        //     )  // Shape: (batch_size, grid_size * grid_size, grid_features_dim)
+        //     attns = [self.attn1, self.attn2, self.attn3]
+        //     bns = [self.bn1, self.bn2, self.bn3]
+        //     for attn, bn in zip(attns, bns):
+        //         attn_grid_features = torch.nan_to_num(
+        //             attn(
+        //                 query=grid_features,
+        //                 key=objs,
+        //                 value=objs,
+        //                 key_padding_mask=objs_attn_mask,
+        //             )[0],
+        //             0.0,
+        //         )  // Sometimes there are no objects, causing NANs
+        //         grid_features = grid_features + attn_grid_features;
+        //         if self.use_bn{
+        //             grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1);}
+        //         grid_features = nn.functional.silu(grid_features);
+        //     grid_features = grid_features.view(orig_shape).permute(
+        //         0, 3, 1, 2
+        //     );  // Shape: (batch_size, grid_features_dim, grid_size, grid_size)
+        // }
 
-//         return grid_features
-//     }
-// }
+        Ok(grid_features)
+    }
+}
 
 pub struct MeasureModel {
     pub backbone: Backbone,
@@ -266,17 +275,15 @@ impl LoadableNN for MeasureModel {
     }
 }
 
-//     impl Module for MeasureModel {
-//     fn forward(
-//         self,
-//         grid: Tensor,  // Shape: (batch_size, channels, size, size)
-//         objs: Optional[Tensor],  // Shape: (batch_size, max_obj_size, obj_dim)
-//         objs_attn_mask: Optional[Tensor],  // Shape: (batch_size, max_obj_size)
-//     ) -> Tensor {
-//         grid_features = self.backbone(grid, objs, objs_attn_mask)
+impl MeasureModel {
+    fn forward(
+        self,
+        grid: &Tensor,                   // Shape: (batch_size, channels, size, size)
+        objs: Option<&Tensor>,           // Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
+    ) -> candle_core::Result<Tensor> {
+        let grid_features = self.backbone.forward(grid, objs, objs_attn_mask)?;
 
-//         return self.out_net(grid_features).squeeze(
-//             1
-//         )  // Shape: (batch_size, grid_size, grid_size)
-//     }
-// }
+        self.out_net.forward(&grid_features)?.squeeze(1) // Shape: (batch_size, grid_size, grid_size)
+    }
+}
