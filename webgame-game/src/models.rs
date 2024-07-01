@@ -92,6 +92,7 @@ impl Backbone {
 
         // Grid + scalar feature processing
         let mid_channels = 16;
+        let grid_vb = vb.pp("grid_net");
         let grid_net = nn::seq()
             .add(nn::conv2d(
                 num_channels,
@@ -101,10 +102,10 @@ impl Backbone {
                     padding: 5 / 2,
                     ..Default::default()
                 },
-                vb.pp("0"),
+                grid_vb.pp("0"),
             )?)
             .add(if use_bn {
-                nn::seq().add(BatchNorm2d::new(mid_channels, vb.pp("1"))?)
+                nn::seq().add(BatchNorm2d::new(mid_channels, grid_vb.pp("1"))?)
             } else {
                 nn::seq()
             })
@@ -117,10 +118,10 @@ impl Backbone {
                     padding: 5 / 2,
                     ..Default::default()
                 },
-                vb.pp("3"),
+                grid_vb.pp("3"),
             )?)
             .add(if use_bn {
-                nn::seq().add(BatchNorm2d::new(mid_channels, vb.pp("4"))?)
+                nn::seq().add(BatchNorm2d::new(mid_channels, grid_vb.pp("4"))?)
             } else {
                 nn::seq()
             })
@@ -133,10 +134,10 @@ impl Backbone {
                     padding: 5 / 2,
                     ..Default::default()
                 },
-                vb.pp("6"),
+                grid_vb.pp("6"),
             )?)
             .add(if use_bn {
-                nn::seq().add(BatchNorm2d::new(out_channels, vb.pp("7"))?)
+                nn::seq().add(BatchNorm2d::new(out_channels, grid_vb.pp("7"))?)
             } else {
                 nn::seq()
             })
@@ -271,6 +272,7 @@ impl LoadableNN for MeasureModel {
         )?;
 
         // Convert features into liklihood map
+        let out_vb = vb.pp("out_net");
         let out_net = nn::seq()
             .add(nn::conv2d(
                 proj_dim,
@@ -280,9 +282,9 @@ impl LoadableNN for MeasureModel {
                     padding: 3 / 2,
                     ..Default::default()
                 },
-                vb.pp("0"),
+                out_vb.pp("0"),
             )?)
-            .add(BatchNorm2d::new(32, vb.pp("1"))?)
+            .add(BatchNorm2d::new(32, out_vb.pp("1"))?)
             .add(nn::Activation::Silu)
             .add(nn::conv2d(
                 32,
@@ -292,9 +294,9 @@ impl LoadableNN for MeasureModel {
                     padding: 3 / 2,
                     ..Default::default()
                 },
-                vb.pp("3"),
+                out_vb.pp("3"),
             )?)
-            .add(BatchNorm2d::new(32, vb.pp("4"))?)
+            .add(BatchNorm2d::new(32, out_vb.pp("4"))?)
             .add(nn::Activation::Silu)
             .add(nn::conv2d(
                 32,
@@ -304,7 +306,7 @@ impl LoadableNN for MeasureModel {
                     padding: 3 / 2,
                     ..Default::default()
                 },
-                vb.pp("6"),
+                out_vb.pp("6"),
             )?)
             .add(nn::Activation::Sigmoid);
 

@@ -76,8 +76,9 @@ impl AssetLoader for SafeTensorsDataLoader {
 }
 
 /// Checks if safetensors are loaded and initializes the network if so.
+/// You MUST add a version of this system for each model type you load.
 #[allow(dead_code)]
-fn load_weights_into_net<T: LoadableNN>(
+pub fn load_weights_into_net<T: LoadableNN>(
     mut net_query: Query<&mut NNWrapper<T>>,
     st_assets: Res<Assets<SafeTensorsData>>,
 ) {
