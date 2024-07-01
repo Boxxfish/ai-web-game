@@ -3,32 +3,69 @@ use candle_nn::{self as nn, Module, VarBuilder};
 
 use crate::net::LoadableNN;
 
-pub struct BatchNorm1d {}
+const BN_EPS: f64 = 1e-5;
+const BN_MOMENTUM: f64 = 0.1;
+
+pub struct BatchNorm1d {
+    pub running_mean: Tensor,
+    pub running_var: Tensor,
+    pub bias: Tensor,
+}
 
 impl BatchNorm1d {
-    pub fn new(num_channels: usize, vb: VarBuilder) -> candle_core::Result<Self> {
-        // TODO: Initialize running_mean and running_var
-        Ok(Self {})
+    pub fn new(num_features: usize, vb: VarBuilder) -> candle_core::Result<Self> {
+        let running_mean = vb.get(&[num_features], "running_mean")?;
+        let running_var = vb.get(&[num_features], "running_var")?;
+        let bias = vb.get(&[num_features], "bias")?;
+        Ok(Self {
+            running_mean,
+            running_var,
+            bias,
+        })
     }
 }
 
 impl Module for BatchNorm1d {
-    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
-        todo!()
+    fn forward(
+        &self,
+        xs: &Tensor, // Shape: (batch_size, num_features)
+    ) -> candle_core::Result<Tensor> {
+        let running_mean = self.running_mean.unsqueeze(0)?;
+        let running_var = self.running_var.unsqueeze(0)?;
+        let bias = self.bias.unsqueeze(0)?;
+        (((xs - running_mean)? / (running_var + BN_EPS)?.sqrt()?)? * BN_MOMENTUM)? + bias
     }
 }
 
-pub struct BatchNorm2d {}
+pub struct BatchNorm2d {
+    pub running_mean: Tensor,
+    pub running_var: Tensor,
+    pub bias: Tensor,
+}
 
 impl BatchNorm2d {
-    pub fn new(num_channels: usize, vb: VarBuilder) -> candle_core::Result<Self> {
-        Ok(Self {})
+    pub fn new(num_features: usize, vb: VarBuilder) -> candle_core::Result<Self> {
+        let running_mean = vb.get(&[num_features], "running_mean")?;
+        let running_var = vb.get(&[num_features], "running_var")?;
+        let bias = vb.get(&[num_features], "bias")?;
+        Ok(Self {
+            running_mean,
+            running_var,
+            bias,
+        })
     }
 }
 
 impl Module for BatchNorm2d {
-    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
-        todo!()
+    fn forward(
+        &self,
+        xs: &Tensor, // Shape: (batch_size, num_features, w, h)
+    ) -> candle_core::Result<Tensor> {
+        let num_features = self.running_mean.shape().dims()[0];
+        let running_mean = self.running_mean.reshape(&[1, num_features, 1, 1])?;
+        let running_var = self.running_var.reshape(&[1, num_features, 1, 1])?;
+        let bias = self.bias.reshape(&[1, num_features, 1, 1])?;
+        (((xs - running_mean)? / (running_var + BN_EPS)?.sqrt()?)? * BN_MOMENTUM)? + bias
     }
 }
 
