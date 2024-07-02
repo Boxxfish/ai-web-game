@@ -33,7 +33,9 @@ impl Module for BatchNorm1d {
         let running_mean = self.running_mean.unsqueeze(0)?;
         let running_var = self.running_var.unsqueeze(0)?;
         let bias = self.bias.unsqueeze(0)?;
-        (((xs - running_mean)? / (running_var + BN_EPS)?.sqrt()?)? * BN_MOMENTUM)? + bias
+        (xs.broadcast_sub(&running_mean)?
+            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * BN_MOMENTUM)?)?)
+        .broadcast_add(&bias)
     }
 }
 
@@ -65,7 +67,9 @@ impl Module for BatchNorm2d {
         let running_mean = self.running_mean.reshape(&[1, num_features, 1, 1])?;
         let running_var = self.running_var.reshape(&[1, num_features, 1, 1])?;
         let bias = self.bias.reshape(&[1, num_features, 1, 1])?;
-        (((xs - running_mean)? / (running_var + BN_EPS)?.sqrt()?)? * BN_MOMENTUM)? + bias
+        (xs.broadcast_sub(&running_mean)?
+            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * BN_MOMENTUM)?)?)
+        .broadcast_add(&bias)
     }
 }
 
@@ -182,7 +186,7 @@ impl Backbone {
 
 impl Backbone {
     fn forward(
-        self,
+        &self,
         grid: &Tensor,                   // Shape: (batch_size, channels, size, size)
         objs: Option<&Tensor>,           // Shape: (batch_size, max_obj_size, obj_dim)
         objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
@@ -315,8 +319,8 @@ impl LoadableNN for MeasureModel {
 }
 
 impl MeasureModel {
-    fn forward(
-        self,
+    pub fn forward(
+        &self,
         grid: &Tensor,                   // Shape: (batch_size, channels, size, size)
         objs: Option<&Tensor>,           // Shape: (batch_size, max_obj_size, obj_dim)
         objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
