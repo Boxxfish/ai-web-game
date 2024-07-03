@@ -271,7 +271,7 @@ fn setup_entities(
         ..default()
     });
 
-    let pursuer_tile_idx = level.get_empty();
+    let pursuer_tile_idx = 0;// level.get_empty();
     commands
         .spawn((
             PursuerAgent,

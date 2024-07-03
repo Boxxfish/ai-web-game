@@ -42,6 +42,7 @@ impl Plugin for ObserverPlayPlugin {
 }
 
 /// Stores visual marker data for an observer
+#[derive(Copy, Clone)]
 pub struct VMSeenData {
     /// When it was last seen (time since startup).
     pub last_seen: f32,

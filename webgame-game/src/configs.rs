@@ -12,7 +12,8 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLayout, LevelLoader, DEFAULT_LEVEL_SIZE},
+    filter::{FilterPlayPlugin, FilterPlugin},
+    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader},
     net::NetPlugin,
     observer::{ObserverPlayPlugin, ObserverPlugin},
     world_objs::WorldObjPlugin,
@@ -24,7 +25,13 @@ pub struct CoreGamePlugin;
 impl Plugin for CoreGamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
-            .add_plugins((NetPlugin, GridworldPlugin, ObserverPlugin, WorldObjPlugin))
+            .add_plugins((
+                NetPlugin,
+                GridworldPlugin,
+                ObserverPlugin,
+                WorldObjPlugin,
+                FilterPlugin,
+            ))
             .insert_resource(RapierConfiguration {
                 gravity: Vec2::ZERO,
                 ..default()
@@ -53,7 +60,7 @@ impl Plugin for PlayablePlugin {
                 ..default()
             }))
             // .add_plugins(RapierDebugRenderPlugin::default())
-            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin));
+            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin, FilterPlayPlugin));
     }
 }
 

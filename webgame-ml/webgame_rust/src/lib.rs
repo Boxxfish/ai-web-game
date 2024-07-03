@@ -4,13 +4,10 @@ use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    configs::{LibCfgPlugin, VisualizerPlugin},
-    gridworld::{
+    configs::{LibCfgPlugin, VisualizerPlugin}, filter::fill_tri_half, gridworld::{
         Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
         GRID_CELL_SIZE,
-    },
-    observer::{Observable, Observer},
-    world_objs::NoiseSource,
+    }, observer::{Observable, Observer}, world_objs::NoiseSource
 };
 
 /// Describes an observable object.
@@ -283,40 +280,6 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
         listening,
         vm_data,
         visible_cells,
-    }
-}
-
-/// Fills in half a triangle.
-fn fill_tri_half(
-    visible_cells: &mut [bool],
-    mid1: Vec2,
-    mid2: Vec2,
-    other: Vec2,
-    is_top: bool,
-    size: usize,
-) {
-    let slope1 = (other.x - mid1.x) / (other.y - mid1.y);
-    let slope2 = (other.x - mid2.x) / (other.y - mid2.y);
-    let dy = GRID_CELL_SIZE;
-    let (mut last1, mut last2) = if is_top { (mid1, mid2) } else { (other, other) };
-    for _ in 0..((if is_top {
-        other.y - mid1.y
-    } else {
-        mid1.y - other.y
-    } / dy)
-        .ceil() as u32)
-    {
-        let y = ((last1.y / GRID_CELL_SIZE).round() as usize).clamp(0, size - 1);
-        for x in ((last1.x / GRID_CELL_SIZE).floor() as usize)
-            ..((last2.x / GRID_CELL_SIZE).ceil() as usize)
-        {
-            visible_cells[y * DEFAULT_LEVEL_SIZE + x.clamp(0, size - 1)] = true;
-        }
-
-        last1.x += slope1 * dy;
-        last1.y += dy;
-        last2.x += slope2 * dy;
-        last2.y += dy;
     }
 }
 
