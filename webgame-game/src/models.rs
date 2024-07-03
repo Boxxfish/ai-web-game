@@ -4,12 +4,12 @@ use candle_nn::{self as nn, Module, VarBuilder};
 use crate::net::LoadableNN;
 
 const BN_EPS: f64 = 1e-5;
-const BN_MOMENTUM: f64 = 0.1;
 
 pub struct BatchNorm1d {
     pub running_mean: Tensor,
     pub running_var: Tensor,
     pub bias: Tensor,
+    pub weight: Tensor,
 }
 
 impl BatchNorm1d {
@@ -17,10 +17,12 @@ impl BatchNorm1d {
         let running_mean = vb.get(&[num_features], "running_mean")?;
         let running_var = vb.get(&[num_features], "running_var")?;
         let bias = vb.get(&[num_features], "bias")?;
+        let weight = vb.get(&[num_features], "weight")?;
         Ok(Self {
             running_mean,
             running_var,
             bias,
+            weight,
         })
     }
 }
@@ -33,8 +35,9 @@ impl Module for BatchNorm1d {
         let running_mean = self.running_mean.unsqueeze(0)?;
         let running_var = self.running_var.unsqueeze(0)?;
         let bias = self.bias.unsqueeze(0)?;
+        let weight = self.weight.unsqueeze(0)?;
         (xs.broadcast_sub(&running_mean)?
-            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * BN_MOMENTUM)?)?)
+            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * weight)?)?)
         .broadcast_add(&bias)
     }
 }
@@ -43,6 +46,7 @@ pub struct BatchNorm2d {
     pub running_mean: Tensor,
     pub running_var: Tensor,
     pub bias: Tensor,
+    pub weight: Tensor,
 }
 
 impl BatchNorm2d {
@@ -50,10 +54,12 @@ impl BatchNorm2d {
         let running_mean = vb.get(&[num_features], "running_mean")?;
         let running_var = vb.get(&[num_features], "running_var")?;
         let bias = vb.get(&[num_features], "bias")?;
+        let weight = vb.get(&[num_features], "weight")?;
         Ok(Self {
             running_mean,
             running_var,
             bias,
+            weight,
         })
     }
 }
@@ -66,9 +72,10 @@ impl Module for BatchNorm2d {
         let num_features = self.running_mean.shape().dims()[0];
         let running_mean = self.running_mean.reshape(&[1, num_features, 1, 1])?;
         let running_var = self.running_var.reshape(&[1, num_features, 1, 1])?;
+        let weight = self.weight.reshape(&[1, num_features, 1, 1])?;
         let bias = self.bias.reshape(&[1, num_features, 1, 1])?;
         (xs.broadcast_sub(&running_mean)?
-            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * BN_MOMENTUM)?)?)
+            .broadcast_div(&((running_var + BN_EPS)?.sqrt()? * weight)?)?)
         .broadcast_add(&bias)
     }
 }
@@ -326,7 +333,6 @@ impl MeasureModel {
         objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
     ) -> candle_core::Result<Tensor> {
         let grid_features = self.backbone.forward(grid, objs, objs_attn_mask)?;
-
         self.out_net.forward(&grid_features)?.squeeze(1) // Shape: (batch_size, grid_size, grid_size)
     }
 }

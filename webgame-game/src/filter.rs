@@ -112,10 +112,9 @@ fn update_filter(
                     .unwrap();
                 let probs =
                     (&probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64).unwrap();
-                info!("{:?}", probs.to_vec2::<f32>().unwrap());
 
                 // Encode observations
-                let (grid, objs, objs_attn_mask) = encode_obs(
+                let (grid, _, _) = encode_obs(
                     &observable_query,
                     &noise_query,
                     player_query.single(),
@@ -129,16 +128,15 @@ fn update_filter(
                 let lkhd = net
                     .forward(
                         &grid.unsqueeze(0).unwrap(),
-                        Some(&objs.unsqueeze(0).unwrap()),
-                        Some(&objs_attn_mask.unsqueeze(0).unwrap()),
+                        None,
+                        None,
                     )
                     .unwrap()
                     .squeeze(0)
                     .unwrap();
-                let probs = lkhd;
-                // let probs = (probs * lkhd).unwrap();
-                // let probs =
-                //     (&probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64).unwrap();
+                let probs = (probs * lkhd).unwrap();
+                let probs =
+                    (&probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64).unwrap();
 
                 filter.probs = probs;
             }
@@ -188,13 +186,14 @@ fn init_probs_viewer(
                 material: materials.add(StandardMaterial {
                     base_color_texture: Some(img),
                     unlit: true,
+                    cull_mode: None,
                     ..default()
                 }),
                 transform: Transform::default().with_translation(Vec3::new(
                     GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
                     GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
                     1.5,
-                )),
+                )).with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
                 ..default()
             },
         ));
