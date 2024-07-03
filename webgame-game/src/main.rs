@@ -12,7 +12,8 @@ mod gridworld;
 mod observer;
 mod world_objs;
 mod filter;
-pub mod models;
+mod models;
+mod observations;
 
 /// Main entry point for our game.
 fn main() {

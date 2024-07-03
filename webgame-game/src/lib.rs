@@ -8,3 +8,4 @@ pub mod observer;
 pub mod world_objs;
 pub mod filter;
 pub mod models;
+pub mod observations;
