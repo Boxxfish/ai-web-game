@@ -357,7 +357,7 @@ impl LoadableNN for PolicyNet {
 
         let backbone = Backbone::new(
             use_pos,
-            true,
+            false,
             channels,
             proj_dim,
             size,
@@ -391,11 +391,11 @@ impl LoadableNN for PolicyNet {
             )?)
             .add(nn::Activation::Silu)
             .add_fn(|t| t.flatten(1, candle_core::D::Minus1))
-            .add(nn::linear(size * size * 16, 256, vb.pp("5"))?)
+            .add(nn::linear(size * size * 16, 256, net_vb.pp("5"))?)
             .add(nn::Activation::Silu)
-            .add(nn::linear(255, 256, vb.pp("7"))?)
+            .add(nn::linear(256, 256, net_vb.pp("7"))?)
             .add(nn::Activation::Silu)
-            .add(nn::linear(255, action_count, vb.pp("9"))?);
+            .add(nn::linear(256, action_count, net_vb.pp("9"))?);
 
         Ok(PolicyNet { net, backbone })
     }

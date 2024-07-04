@@ -15,10 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
-    configs::IsPlayable,
-    observer::{DebugObserver, Observable, Observer, Wall},
-    world_objs::{NoiseSource, VisualMarker},
+    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent}, configs::IsPlayable, models::PolicyNet, net::NNWrapper, observer::{DebugObserver, Observable, Observer, Wall}, world_objs::{NoiseSource, VisualMarker}
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -234,7 +231,7 @@ fn setup_entities(
     let pursuer_tile_idx = 0; // level.get_empty();
     commands
         .spawn((
-            PursuerAgent,
+            PursuerAgent::default(),
             Agent::default(),
             NextAction::default(),
             Collider::ball(GRID_CELL_SIZE * 0.25),
@@ -250,6 +247,7 @@ fn setup_entities(
             Observer::default(),
             Observable,
             DebugObserver,
+            NNWrapper::<PolicyNet>::with_sftensors(asset_server.load("p_net.safetensors"))
         ))
         .with_children(|p| {
             if is_playable.is_some() {

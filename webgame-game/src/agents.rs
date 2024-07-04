@@ -2,8 +2,17 @@ use std::time::Duration;
 
 use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::control::KinematicCharacterController;
+use candle_core::Tensor;
+use rand::distributions::Distribution;
 
-use crate::gridworld::{ShouldRun, GRID_CELL_SIZE};
+use crate::{
+    gridworld::{LevelLayout, ShouldRun, GRID_CELL_SIZE},
+    models::PolicyNet,
+    net::{load_weights_into_net, NNWrapper},
+    observations::encode_obs,
+    observer::{Observable, Observer},
+    world_objs::NoiseSource,
+};
 
 /// Plugin for agent stuff.
 pub struct AgentPlugin;
@@ -13,11 +22,16 @@ impl Plugin for AgentPlugin {
         app.add_systems(
             Update,
             (
-                move_agents,
-                visualize_agent::<PursuerAgent>(Color::RED),
-                visualize_agent::<PlayerAgent>(Color::GREEN),
-            )
-                .run_if(resource_exists::<ShouldRun>),
+                (
+                    update_observations,
+                    move_agents,
+                    set_pursuer_action,
+                    visualize_agent::<PursuerAgent>(Color::RED),
+                    visualize_agent::<PlayerAgent>(Color::GREEN),
+                )
+                    .run_if(resource_exists::<ShouldRun>),
+                load_weights_into_net::<PolicyNet>,
+            ),
         );
     }
 }
@@ -49,7 +63,49 @@ impl Default for Agent {
 
 // Indicates the Pursuer agent.
 #[derive(Component)]
-pub struct PursuerAgent;
+pub struct PursuerAgent {
+    pub observations: Option<(Tensor, Option<Tensor>, Option<Tensor>)>,
+    pub obs_timer: Timer,
+}
+
+impl Default for PursuerAgent {
+    fn default() -> Self {
+        Self {
+            observations: None,
+            obs_timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+        }
+    }
+}
+
+/// Updates the Pursuer's observations.
+#[allow(clippy::too_many_arguments)]
+fn update_observations(
+    mut pursuer_query: Query<&mut PursuerAgent>,
+    p_query: Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
+    time: Res<Time>,
+    observable_query: Query<(Entity, &GlobalTransform), With<Observable>>,
+    noise_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
+    level: Res<LevelLayout>,
+    player_query: Query<Entity, With<PlayerAgent>>,
+    listening_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
+) {
+    for mut pursuer in pursuer_query.iter_mut() {
+        pursuer.obs_timer.tick(time.delta());
+        if pursuer.obs_timer.just_finished() {
+            // Encode observations
+            let (grid, _, _) = encode_obs(
+                &observable_query,
+                &noise_query,
+                player_query.single(),
+                &level,
+                &p_query,
+                &listening_query,
+            )
+            .unwrap();
+            pursuer.observations = Some((grid, None, None));
+        }
+    }
+}
 
 /// Indicates the Player agent;
 #[derive(Component)]
@@ -118,6 +174,51 @@ fn set_player_action(
     next_action.toggle_objs = false;
     if inpt.just_pressed(KeyCode::KeyF) {
         next_action.toggle_objs = true;
+    }
+}
+
+/// Updates the Pursuer's next action.
+fn set_pursuer_action(
+    mut pursuer_query: Query<(&mut NextAction, &PursuerAgent, &NNWrapper<PolicyNet>)>,
+) {
+    if let Ok((mut next_action, pursuer, p_net)) = pursuer_query.get_single_mut() {
+        if let Some(net) = &p_net.net {
+            if pursuer.obs_timer.just_finished() {
+                if let Some((grid, objs, objs_attn_mask)) = &pursuer.observations {
+                    let logits = net
+                        .forward(
+                            &grid.unsqueeze(0).unwrap(),
+                            objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
+                            objs_attn_mask
+                                .as_ref()
+                                .map(|t| t.unsqueeze(0).unwrap())
+                                .as_ref(),
+                        )
+                        .unwrap()
+                        .squeeze(0)
+                        .unwrap();
+                    let probs =
+                        (logits.exp().unwrap().broadcast_div(&logits.exp().unwrap().sum_all().unwrap())).unwrap();
+                    let index = rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap()).unwrap();
+                    let mut rng = rand::thread_rng();
+                    let action = index.sample(&mut rng);
+                    let dir = match action {
+                        1 => Vec2::Y,
+                        2 => (Vec2::Y + Vec2::X).normalize(),
+                        3 => Vec2::X,
+                        4 => (-Vec2::Y + Vec2::X).normalize(),
+                        5 => -Vec2::Y,
+                        6 => (-Vec2::Y + -Vec2::X).normalize(),
+                        7 => -Vec2::X,
+                        8 => (Vec2::Y + -Vec2::X).normalize(),
+                        _ => Vec2::ZERO,
+                    };
+
+                    next_action.dir = dir;
+                    next_action.toggle_objs = false;
+                }
+            }
+        }
     }
 }
 

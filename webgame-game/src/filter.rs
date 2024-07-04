@@ -9,13 +9,10 @@ use bevy::{
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
-    agents::{Agent, PlayerAgent, PursuerAgent},
+    agents::PursuerAgent,
     gridworld::{LevelLayout, GRID_CELL_SIZE},
     models::MeasureModel,
     net::{load_weights_into_net, NNWrapper},
-    observations::encode_obs,
-    observer::{Observable, Observer},
-    world_objs::NoiseSource,
 };
 
 /// Plugin for Bayes filtering functionality.
@@ -45,7 +42,6 @@ impl Plugin for FilterPlayPlugin {
 #[derive(Component)]
 pub struct BayesFilter {
     pub probs: Tensor,
-    pub timer: Timer,
 }
 
 impl BayesFilter {
@@ -53,10 +49,7 @@ impl BayesFilter {
         let probs = (Tensor::ones(&[size, size], DType::F32, &Device::Cpu).unwrap()
             / (size * size) as f64)
             .unwrap();
-        Self {
-            probs,
-            timer: Timer::from_seconds(0.5, TimerMode::Repeating),
-        }
+        Self { probs }
     }
 }
 
@@ -72,68 +65,60 @@ fn init_filter_net(mut commands: Commands, asset_server: Res<AssetServer>) {
 #[allow(clippy::too_many_arguments)]
 fn update_filter(
     mut filter_query: Query<(&mut BayesFilter, &NNWrapper<MeasureModel>)>,
-    time: Res<Time>,
-    observable_query: Query<(Entity, &GlobalTransform), With<Observable>>,
-    noise_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
-    level: Res<LevelLayout>,
-    player_query: Query<Entity, With<PlayerAgent>>,
-    pursuer_query: Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
-    listening_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
+    pursuer_query: Query<&PursuerAgent>,
 ) {
     for (mut filter, model) in filter_query.iter_mut() {
-        filter.timer.tick(time.delta());
-        if filter.timer.just_finished() {
-            if let Some(net) = &model.net {
-                // Apply motion model
-                let kernel = (Tensor::from_slice(
-                    &[0., 1., 0., 1., 1., 1., 0., 1., 0.],
-                    &[1, 3, 3],
-                    &Device::Cpu,
-                )
-                .unwrap()
-                    / 5.)
-                    .unwrap()
-                    .reshape(&[1, 1, 3, 3])
-                    .unwrap()
-                    .to_dtype(DType::F32)
-                    .unwrap();
-                let probs = filter
-                    .probs
-                    .unsqueeze(0)
-                    .unwrap()
-                    .unsqueeze(0)
-                    .unwrap()
-                    .conv2d(&kernel, 1, 1, 1, 1)
-                    .unwrap()
-                    .squeeze(0)
-                    .unwrap()
-                    .squeeze(0)
-                    .unwrap();
-                let probs =
-                    (&probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64).unwrap();
+        if let Some(net) = &model.net {
+            if let Ok(pursuer) = pursuer_query.get_single() {
+                if pursuer.obs_timer.just_finished() {
+                    if let Some((grid, objs, objs_attn)) = pursuer.observations.as_ref() {
+                        // Apply motion model
+                        let kernel = (Tensor::from_slice(
+                            &[0., 1., 0., 1., 1., 1., 0., 1., 0.],
+                            &[1, 3, 3],
+                            &Device::Cpu,
+                        )
+                        .unwrap()
+                            / 5.)
+                            .unwrap()
+                            .reshape(&[1, 1, 3, 3])
+                            .unwrap()
+                            .to_dtype(DType::F32)
+                            .unwrap();
+                        let probs = filter
+                            .probs
+                            .unsqueeze(0)
+                            .unwrap()
+                            .unsqueeze(0)
+                            .unwrap()
+                            .conv2d(&kernel, 1, 1, 1, 1)
+                            .unwrap()
+                            .squeeze(0)
+                            .unwrap()
+                            .squeeze(0)
+                            .unwrap();
+                        let probs = (&probs
+                            / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)
+                            .unwrap();
 
-                // Encode observations
-                let (grid, _, _) = encode_obs(
-                    &observable_query,
-                    &noise_query,
-                    player_query.single(),
-                    &level,
-                    &pursuer_query,
-                    &listening_query,
-                )
-                .unwrap();
+                        // Apply measurement model
+                        let lkhd = net
+                            .forward(
+                                &grid.unsqueeze(0).unwrap(),
+                                objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
+                                objs_attn.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
+                            )
+                            .unwrap()
+                            .squeeze(0)
+                            .unwrap();
+                        let probs = (probs * lkhd).unwrap();
+                        let probs = (&probs
+                            / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)
+                            .unwrap();
 
-                // Apply measurement model
-                let lkhd = net
-                    .forward(&grid.unsqueeze(0).unwrap(), None, None)
-                    .unwrap()
-                    .squeeze(0)
-                    .unwrap();
-                let probs = (probs * lkhd).unwrap();
-                let probs =
-                    (&probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64).unwrap();
-
-                filter.probs = probs;
+                        filter.probs = probs;
+                    }
+                }
             }
         }
     }

@@ -12,11 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    filter::{FilterPlayPlugin, FilterPlugin},
-    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader},
-    net::NetPlugin,
-    observer::{ObserverPlayPlugin, ObserverPlugin},
-    world_objs::WorldObjPlugin,
+    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, world_objs::WorldObjPlugin
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -31,6 +27,7 @@ impl Plugin for CoreGamePlugin {
                 ObserverPlugin,
                 WorldObjPlugin,
                 FilterPlugin,
+                AgentPlugin,
             ))
             .insert_resource(RapierConfiguration {
                 gravity: Vec2::ZERO,
@@ -60,7 +57,7 @@ impl Plugin for PlayablePlugin {
                 ..default()
             }))
             // .add_plugins(RapierDebugRenderPlugin::default())
-            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin, FilterPlayPlugin));
+            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin, FilterPlayPlugin, AgentPlayPlugin));
     }
 }
 
