@@ -14,6 +14,7 @@ mod world_objs;
 mod filter;
 mod models;
 mod observations;
+mod agents;
 
 /// Main entry point for our game.
 fn main() {

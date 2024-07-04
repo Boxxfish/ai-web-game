@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use bevy::{
     prelude::*,
     render::{mesh::PrimitiveTopology, render_asset::RenderAssetUsages},
-    sprite::Mesh2dHandle,
 };
 use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
 use crate::{
-    gridworld::{move_agents, Agent},
+    agents::{move_agents, Agent},
     world_objs::VisualMarker,
 };
 
@@ -258,14 +257,12 @@ fn add_vis_cones(
                         )
                         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new()),
                     ),
-                    material: materials.add(
-                        StandardMaterial {
-                            base_color: Color::WHITE.with_a(0.1),
-                            unlit: true,
-                            alpha_mode: AlphaMode::Add,
-                            ..default()
-                        }
-                    ),
+                    material: materials.add(StandardMaterial {
+                        base_color: Color::WHITE.with_a(0.1),
+                        unlit: true,
+                        alpha_mode: AlphaMode::Add,
+                        ..default()
+                    }),
                     transform: Transform::from_matrix(xform.compute_matrix().inverse()),
                     ..default()
                 },

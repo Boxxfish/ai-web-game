@@ -4,8 +4,9 @@ use bevy::prelude::*;
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
-    gridworld::{Agent, LevelLayout, PursuerAgent, GRID_CELL_SIZE},
+    gridworld::{LevelLayout, GRID_CELL_SIZE},
     observer::{Observable, Observer, VMSeenData},
+    agents::{Agent, PursuerAgent},
     world_objs::NoiseSource,
 };
 

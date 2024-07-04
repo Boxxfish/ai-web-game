@@ -9,3 +9,4 @@ pub mod world_objs;
 pub mod filter;
 pub mod models;
 pub mod observations;
+pub mod agents;
