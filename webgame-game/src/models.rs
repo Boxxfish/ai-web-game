@@ -336,3 +336,79 @@ impl MeasureModel {
         self.out_net.forward(&grid_features)?.squeeze(1) // Shape: (batch_size, grid_size, grid_size)
     }
 }
+
+pub struct PolicyNet {
+    pub backbone: Backbone,
+    pub net: nn::Sequential,
+}
+
+// Not great, but we don't break these invariants
+unsafe impl Send for PolicyNet {}
+unsafe impl Sync for PolicyNet {}
+
+impl LoadableNN for PolicyNet {
+    fn load(vb: VarBuilder) -> candle_core::Result<Self> {
+        let channels = 9;
+        let size = 8;
+        let use_pos = true;
+        let objs_shape = None;
+        let proj_dim = 32;
+        let action_count = 10;
+
+        let backbone = Backbone::new(
+            use_pos,
+            true,
+            channels,
+            proj_dim,
+            size,
+            objs_shape,
+            vb.pp("backbone"),
+        )?;
+        
+        // Convert features into liklihood map
+        let net_vb = vb.pp("net");
+        let net = nn::seq()
+            .add(nn::conv2d(
+                proj_dim,
+                32,
+                3,
+                nn::Conv2dConfig {
+                    padding: 3 / 2,
+                    ..Default::default()
+                },
+                net_vb.pp("0"),
+            )?)
+            .add(nn::Activation::Silu)
+            .add(nn::conv2d(
+                32,
+                16,
+                3,
+                nn::Conv2dConfig {
+                    padding: 3 / 2,
+                    ..Default::default()
+                },
+                net_vb.pp("2"),
+            )?)
+            .add(nn::Activation::Silu)
+            .add_fn(|t| t.flatten(1, candle_core::D::Minus1))
+            .add(nn::linear(size * size * 16, 256, vb.pp("5"))?)
+            .add(nn::Activation::Silu)
+            .add(nn::linear(255, 256, vb.pp("7"))?)
+            .add(nn::Activation::Silu)
+            .add(nn::linear(255, action_count, vb.pp("9"))?);
+
+        Ok(PolicyNet { net, backbone })
+    }
+}
+
+impl PolicyNet {
+    pub fn forward(
+        &self,
+        grid: &Tensor,                   // Shape: (batch_size, channels, size, size)
+        objs: Option<&Tensor>,           // Shape: (batch_size, max_obj_size, obj_dim)
+        objs_attn_mask: Option<&Tensor>, // Shape: (batch_size, max_obj_size)
+    ) -> candle_core::Result<Tensor> {
+        let grid_features: Tensor = self.backbone.forward(grid, objs, objs_attn_mask)?;
+        self.net.forward(&grid_features) // Shape: (batch_size, num_actions)
+    }
+}

@@ -584,7 +584,7 @@ pub struct NextAction {
     pub toggle_objs: bool,
 }
 
-/// Allows the player to set the Players next action.
+/// Allows the player to set the Player's next action.
 fn set_player_action(
     inpt: Res<ButtonInput<KeyCode>>,
     mut player_query: Query<&mut NextAction, With<PlayerAgent>>,
