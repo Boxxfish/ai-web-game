@@ -1,5 +1,6 @@
 use crate::{
-    gridworld::{Agent, NextAction, GRID_CELL_SIZE},
+    agents::{Agent, NextAction},
+    gridworld::GRID_CELL_SIZE,
     observer::Wall,
 };
 use bevy::{prelude::*, sprite::Mesh2dHandle};
@@ -120,6 +121,7 @@ fn update_noise_src(
 }
 
 /// Visualizes a noise source.
+#[allow(dead_code)]
 fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform, &NoiseSource)>) {
     for (obj_xform, noise) in noise_query.iter() {
         let obj_pos = obj_xform.translation().xy();
@@ -146,11 +148,12 @@ fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform,
 pub struct VisualMarker;
 
 /// Visualizes a visual marker.
+#[allow(dead_code)]
 fn visualize_visual_marker(
     mut gizmos: Gizmos,
-    visual_query: Query<(&GlobalTransform, &VisualMarker)>,
+    visual_query: Query<&GlobalTransform, With<VisualMarker>>,
 ) {
-    for (obj_xform, visual) in visual_query.iter() {
+    for obj_xform in visual_query.iter() {
         let obj_pos = obj_xform.translation().xy();
         gizmos.rect(
             obj_pos.extend(GRID_CELL_SIZE),

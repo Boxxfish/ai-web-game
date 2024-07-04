@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bevy::{
     prelude::*,
     render::{
@@ -11,11 +9,12 @@ use bevy::{
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
-    gridworld::{Agent, LevelLayout, PlayerAgent, PursuerAgent, GRID_CELL_SIZE},
+    agents::{Agent, PlayerAgent, PursuerAgent},
+    gridworld::{LevelLayout, GRID_CELL_SIZE},
     models::MeasureModel,
     net::{load_weights_into_net, NNWrapper},
     observations::encode_obs,
-    observer::{Observable, Observer, VMSeenData},
+    observer::{Observable, Observer},
     world_objs::NoiseSource,
 };
 
@@ -126,11 +125,7 @@ fn update_filter(
 
                 // Apply measurement model
                 let lkhd = net
-                    .forward(
-                        &grid.unsqueeze(0).unwrap(),
-                        None,
-                        None,
-                    )
+                    .forward(&grid.unsqueeze(0).unwrap(), None, None)
                     .unwrap()
                     .squeeze(0)
                     .unwrap();
@@ -189,11 +184,13 @@ fn init_probs_viewer(
                     cull_mode: None,
                     ..default()
                 }),
-                transform: Transform::default().with_translation(Vec3::new(
-                    GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
-                    GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
-                    1.5,
-                )).with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
+                transform: Transform::default()
+                    .with_translation(Vec3::new(
+                        GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
+                        GRID_CELL_SIZE * (level.size - 1) as f32 / 2.,
+                        1.5,
+                    ))
+                    .with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
                 ..default()
             },
         ));
