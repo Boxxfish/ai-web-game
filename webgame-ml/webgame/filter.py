@@ -37,6 +37,7 @@ class BayesFilter:
         ],
         use_objs: bool,
         is_pursuer: bool,
+        lkhd_min: float = 0.0,
     ):
         self.size = size
         self.cell_size = cell_size
@@ -44,6 +45,7 @@ class BayesFilter:
         self.update_fn = update_fn
         self.use_objs = use_objs
         self.is_pursuer = is_pursuer
+        self.lkhd_min = lkhd_min
 
     def localize(
         self,
@@ -64,6 +66,7 @@ class BayesFilter:
             self.cell_size,
             self.is_pursuer,
         )
+        lkhd = lkhd * (1 - self.lkhd_min) + self.lkhd_min
         self.belief = lkhd * self.belief
         self.belief = self.belief / self.belief.sum()
         return self.belief
@@ -229,6 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
+    parser.add_argument("--lkhd-min", type=float, default=0.0)
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     args = parser.parse_args()
 
@@ -258,7 +262,7 @@ if __name__ == "__main__":
         update_fn = gt_update
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False, True)
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, args.use_objs, True, args.lkhd_min)
 
     # Set up policies
     policies = {}
