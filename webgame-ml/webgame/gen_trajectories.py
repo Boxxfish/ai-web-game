@@ -28,10 +28,12 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--num-seqs", type=int, default=4_000)
     parser.add_argument("--use-objs", default=False, action="store_true")
+    parser.add_argument("--localize-self", default=False, action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
+    parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     args = parser.parse_args()
 
-    env = GameEnv(use_objs=args.use_objs, wall_prob=args.wall_prob)
+    env = GameEnv(use_objs=args.use_objs, wall_prob=args.wall_prob, insert_visible_cells=args.insert_visible_cells)
     action_space = env.action_space("pursuer")
     all_seqs = []
     all_tiles = []
@@ -52,6 +54,8 @@ def main() -> None:
             pursuer_obs = obs["pursuer"]
             processed_obs = process_obs(pursuer_obs)
             player_pos = env.game_state.player.pos
+            if args.localize_self:
+                player_pos = env.game_state.pursuer.pos
             gold_tile = pos_to_grid(
                 player_pos.x, player_pos.y, env.game_state.level_size, CELL_SIZE
             )

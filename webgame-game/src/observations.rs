@@ -101,8 +101,8 @@ pub fn encode_obs(
     for (i, e) in agent_state.listening.iter().enumerate() {
         let obj_noise = noise_sources.get(e).unwrap();
         let mut obj_features = vec![0.; OBJ_DIM];
-        obj_features[0] = obj_noise.pos.x / (level.size as f32 * GRID_CELL_SIZE);
-        obj_features[1] = obj_noise.pos.y / (level.size as f32 * GRID_CELL_SIZE);
+        obj_features[0] = 0.5 + obj_noise.pos.x / (level.size as f32 * GRID_CELL_SIZE);
+        obj_features[1] = 0.5 + obj_noise.pos.y / (level.size as f32 * GRID_CELL_SIZE);
         obj_features[3] = 1.;
         obj_features[4] = obj_noise.active_radius;
         obs_vecs[i + agent_state.observing.len()] = obj_features;

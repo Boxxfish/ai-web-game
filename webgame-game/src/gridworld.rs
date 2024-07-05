@@ -15,7 +15,12 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent}, configs::IsPlayable, models::PolicyNet, net::NNWrapper, observer::{DebugObserver, Observable, Observer, Wall}, world_objs::{NoiseSource, VisualMarker}
+    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
+    configs::IsPlayable,
+    models::PolicyNet,
+    net::NNWrapper,
+    observer::{DebugObserver, Observable, Observer, Wall},
+    world_objs::{NoiseSource, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -163,16 +168,18 @@ impl LevelLayout {
             objects: Vec::new(),
         };
         let mut objects = Vec::new();
-        for _ in 0..rng.gen_range(0..max_items) {
-            let tile_idx = orig.get_empty();
-            let y = tile_idx / size;
-            let x = tile_idx % size;
-            objects.push(LoadedObjData {
-                name: "".into(),
-                pos: (x, y),
-                dir: Some("left".into()),
-                movable: true,
-            });
+        if max_items > 0 {
+            for _ in 0..rng.gen_range(0..max_items) {
+                let tile_idx = orig.get_empty();
+                let y = tile_idx / size;
+                let x = tile_idx % size;
+                objects.push(LoadedObjData {
+                    name: "".into(),
+                    pos: (x, y),
+                    dir: Some("left".into()),
+                    movable: true,
+                });
+            }
         }
         Self {
             walls: orig.walls,
@@ -228,7 +235,7 @@ fn setup_entities(
         ..default()
     });
 
-    let pursuer_tile_idx = 0; // level.get_empty();
+    let pursuer_tile_idx = level.get_empty();
     commands
         .spawn((
             PursuerAgent::default(),
@@ -247,7 +254,7 @@ fn setup_entities(
             Observer::default(),
             Observable,
             DebugObserver,
-            NNWrapper::<PolicyNet>::with_sftensors(asset_server.load("p_net.safetensors"))
+            NNWrapper::<PolicyNet>::with_sftensors(asset_server.load("p_net.safetensors")),
         ))
         .with_children(|p| {
             if is_playable.is_some() {

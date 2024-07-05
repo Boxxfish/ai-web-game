@@ -21,17 +21,13 @@ impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                (
-                    update_observations,
-                    move_agents,
-                    set_pursuer_action,
-                    visualize_agent::<PursuerAgent>(Color::RED),
-                    visualize_agent::<PlayerAgent>(Color::GREEN),
-                )
-                    .run_if(resource_exists::<ShouldRun>),
-                load_weights_into_net::<PolicyNet>,
-            ),
+            ((
+                update_observations,
+                move_agents,
+                visualize_agent::<PursuerAgent>(Color::RED),
+                visualize_agent::<PlayerAgent>(Color::GREEN),
+            )
+                .run_if(resource_exists::<ShouldRun>),),
         );
     }
 }
@@ -43,7 +39,10 @@ impl Plugin for AgentPlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            set_player_action.run_if(resource_exists::<ShouldRun>),
+            (
+                (set_player_action, set_pursuer_action).run_if(resource_exists::<ShouldRun>),
+                load_weights_into_net::<PolicyNet>,
+            ),
         );
     }
 }
@@ -197,9 +196,14 @@ fn set_pursuer_action(
                         .unwrap()
                         .squeeze(0)
                         .unwrap();
-                    let probs =
-                        (logits.exp().unwrap().broadcast_div(&logits.exp().unwrap().sum_all().unwrap())).unwrap();
-                    let index = rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap()).unwrap();
+                    let probs = (logits
+                        .exp()
+                        .unwrap()
+                        .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
+                    .unwrap();
+                    let index =
+                        rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap())
+                            .unwrap();
                     let mut rng = rand::thread_rng();
                     let action = index.sample(&mut rng);
                     let dir = match action {
