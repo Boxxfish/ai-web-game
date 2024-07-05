@@ -130,6 +130,7 @@ def main() -> None:
         model.train()
         seq_idxs = torch.randperm(num_seqs_train, device=device)
         avg_loss = 0.0
+        avg_loss_all = 0.0
         for batch_idx in range(batches_per_epoch):
             batch_x_grid = train_x_grid[
                 seq_idxs[batch_idx * batch_size : (batch_idx + 1) * batch_size]
@@ -153,6 +154,7 @@ def main() -> None:
                 / grid_size**2
             )
             loss = torch.zeros([1], device=device)
+            loss_all = 0.0
             for step in range(seq_len):
                 lkhd = torch.flatten(
                     model(
@@ -175,6 +177,8 @@ def main() -> None:
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
+                with torch.no_grad():
+                    loss_all += nll(priors.log(), batch_y[:, step]).item()
                 if args.only_opt_last and step < seq_len - 1:
                     continue
                 loss += nll(priors.log(), batch_y[:, step])
@@ -183,10 +187,12 @@ def main() -> None:
             opt.step()
 
             avg_loss += loss.item()
+            avg_loss_all += avg_loss
 
         model.eval()
         with torch.no_grad():
             avg_valid_loss = 0.0
+            avg_valid_loss_all = 0.0
             priors = (
                 torch.ones(
                     [num_seqs_valid, grid_size**2], dtype=torch.float, device=device
@@ -207,11 +213,22 @@ def main() -> None:
                 new_priors = new_priors * lkhd
                 new_priors = new_priors / new_priors.sum(1, keepdim=True)
                 priors = new_priors
+                with torch.no_grad():
+                    avg_valid_loss_all += nll(priors.log(), valid_y[:, step]).item()
+                if args.only_opt_last and step < seq_len - 1:
+                    continue
                 avg_valid_loss += nll(priors.log(), valid_y[:, step]).item()
 
         avg_loss = avg_loss / batches_per_epoch
 
-        wandb.log({"train_loss": avg_loss, "valid_loss": avg_valid_loss})
+        wandb.log(
+            {
+                "train_loss": avg_loss,
+                "train_loss_all": avg_loss_all,
+                "valid_loss": avg_valid_loss,
+                "valid_loss_all": avg_valid_loss_all,
+            }
+        )
 
         if epoch % args.save_every == 0:
             save_model(model, str(chkpt_path / f"model-{epoch}.safetensors"))
