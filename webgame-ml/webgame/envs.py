@@ -66,6 +66,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                 np.ndarray,
             ]
         ] = None,
+        insert_visible_cells: bool = False,
     ):
         self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -76,6 +77,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.use_objs = use_objs
         self.update_fn = update_fn
         self.filters: Optional[Dict[str, BayesFilter]] = None
+        self.insert_visible_cells = insert_visible_cells
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -215,8 +217,12 @@ class GameEnv(pettingzoo.ParallelEnv):
         for i, e in enumerate(agent_state.listening):
             obj_noise = game_state.noise_sources[e]
             obj_features = np.zeros([OBJ_DIM])
-            obj_features[0] = obj_noise.pos.x / (game_state.level_size * CELL_SIZE)
-            obj_features[1] = obj_noise.pos.y / (game_state.level_size * CELL_SIZE)
+            obj_features[0] = 0.5 + obj_noise.pos.x / (
+                game_state.level_size * CELL_SIZE
+            )
+            obj_features[1] = 0.5 + obj_noise.pos.y / (
+                game_state.level_size * CELL_SIZE
+            )
             obj_features[3] = 1
             obj_features[4] = obj_noise.active_radius
             obs_vecs[i + len(agent_state.observing)] = obj_features
@@ -225,13 +231,14 @@ class GameEnv(pettingzoo.ParallelEnv):
         attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
         agent_name = ["player", "pursuer"][int(is_pursuer)]
-        filter_probs = np.zeros(walls.shape, dtype=float)
+        extra_channel = np.zeros(walls.shape, dtype=float)
+        assert not (self.filters is not None and self.insert_visible_cells)
         if self.filters:
-            filter_probs = self.filters[agent_name].localize(
+            extra_channel = self.filters[agent_name].localize(
                 process_obs(
                     (
                         obs_vec,
-                        np.stack([walls, filter_probs]),
+                        np.stack([walls, extra_channel]),
                         obs_vec,
                         attn_mask,
                     )
@@ -239,7 +246,15 @@ class GameEnv(pettingzoo.ParallelEnv):
                 game_state,
                 agent_state,
             )
-        grid = np.stack([walls, filter_probs])
+        if self.insert_visible_cells:
+            assert self.game_state
+            visible_cells = [self.game_state.player, self.game_state.pursuer][
+                int(is_pursuer)
+            ].visible_cells
+            extra_channel = np.array(visible_cells).reshape(
+                [self.game_state.level_size, self.game_state.level_size]
+            )
+        grid = np.stack([walls, extra_channel])
 
         return (obs_vec, grid, obs_vecs, attn_mask)
 

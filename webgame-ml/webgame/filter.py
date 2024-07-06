@@ -37,6 +37,7 @@ class BayesFilter:
         ],
         use_objs: bool,
         is_pursuer: bool,
+        lkhd_min: float = 0.0,
     ):
         self.size = size
         self.cell_size = cell_size
@@ -44,6 +45,7 @@ class BayesFilter:
         self.update_fn = update_fn
         self.use_objs = use_objs
         self.is_pursuer = is_pursuer
+        self.lkhd_min = lkhd_min
 
     def localize(
         self,
@@ -64,6 +66,7 @@ class BayesFilter:
             self.cell_size,
             self.is_pursuer,
         )
+        lkhd = lkhd * (1 - self.lkhd_min) + self.lkhd_min
         self.belief = lkhd * self.belief
         self.belief = self.belief / self.belief.sum()
         return self.belief
@@ -144,9 +147,9 @@ def model_update(
     ) -> np.ndarray:
         lkhd = (
             model(
-                torch.from_numpy(obs[0]).unsqueeze(0).float(),
-                torch.from_numpy(obs[1]).unsqueeze(0).float() if use_objs else None,
-                torch.from_numpy(obs[2]).unsqueeze(0).float() if use_objs else None,
+                torch.from_numpy(obs[0]).float(),
+                torch.from_numpy(obs[1]).float() if use_objs else None,
+                torch.from_numpy(obs[2]).float() if use_objs else None,
             )
             .squeeze(0)
             .numpy()
@@ -174,13 +177,13 @@ def gt_update(
     return lkhd
 
 
-def zero_probs(obs: Tuple[Tensor, Tensor, Tensor]):
+def replace_extra_channel(obs: Tuple[Tensor, Tensor, Tensor], channel: Tensor):
     """
-    Zeroes out the probability channel of observations.
+    Replaces the extra channel.
     """
     zeroed = obs[0]
-    zeroed[0, :, :] = 0
-    return (zeroed, obs[1].numpy(), obs[2].numpy())
+    zeroed[:, -1] = channel
+    return (zeroed.numpy(), obs[1].numpy(), obs[2].numpy())
 
 
 if __name__ == "__main__":
@@ -229,6 +232,9 @@ if __name__ == "__main__":
     parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
+    parser.add_argument("--lkhd-min", type=float, default=0.0)
+    parser.add_argument("--insert-visible-cells", default=False, action="store_true")
+    parser.add_argument("--start-gt", default=False, action="store_true")
     args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
@@ -257,7 +263,12 @@ if __name__ == "__main__":
         update_fn = gt_update
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, False, True)
+    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, args.use_objs, True, args.lkhd_min)
+    if args.start_gt:
+        b_filter.belief = np.zeros(b_filter.belief.shape)
+        play_pos = env.game_state.player.pos
+        x, y = pos_to_grid(play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE)
+        b_filter.belief[y, x] = 1
 
     # Set up policies
     policies = {}
@@ -283,8 +294,23 @@ if __name__ == "__main__":
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
-        filter_obs = zero_probs(obs["pursuer"])
+        extra_channel = torch.zeros([game_state.level_size, game_state.level_size], dtype=torch.float)
+        if args.insert_visible_cells:
+            visible_cells = agent_state.visible_cells
+            extra_channel = torch.tensor(visible_cells, dtype=torch.float).reshape(
+                [game_state.level_size, game_state.level_size]
+            )
+        filter_obs = replace_extra_channel(obs["pursuer"], extra_channel)
         lkhd = update_fn(
+            filter_obs,
+            False,
+            game_state,
+            agent_state,
+            game_state.level_size,
+            CELL_SIZE,
+            True,
+        )
+        manual_lkhd = manual_update(
             filter_obs,
             False,
             game_state,
@@ -296,3 +322,5 @@ if __name__ == "__main__":
         probs = b_filter.localize(filter_obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)
+        rr.log("filter/manual_measurement_likelihood", rr.Tensor(manual_lkhd), timeless=False)
+        rr.log("filter/filter_obs", rr.Tensor(filter_obs[0]), timeless=False)

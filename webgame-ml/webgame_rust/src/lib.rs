@@ -4,10 +4,12 @@ use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    configs::{LibCfgPlugin, VisualizerPlugin}, filter::fill_tri_half, gridworld::{
-        Agent, LevelLayout, NextAction, PlayerAgent, PursuerAgent, DEFAULT_LEVEL_SIZE,
-        GRID_CELL_SIZE,
-    }, observer::{Observable, Observer}, world_objs::NoiseSource
+    agents::{Agent, PlayerAgent, PursuerAgent, NextAction},
+    configs::{LibCfgPlugin, VisualizerPlugin},
+    gridworld::{LevelLayout, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE},
+    observer::{Observable, Observer},
+    observations::fill_tri_half,
+    world_objs::NoiseSource,
 };
 
 /// Describes an observable object.
