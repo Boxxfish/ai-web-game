@@ -46,6 +46,7 @@ def main() -> None:
     parser.add_argument("--use-objs", default=False, action="store_true")
     parser.add_argument("--lkhd-min", type=float, default=0.001)
     parser.add_argument("--only-opt-last", default=False, action="store_true")
+    parser.add_argument("--start-gt", default=False, action="store_true")
 
     args = parser.parse_args()
     device = torch.device(args.device)
@@ -149,10 +150,16 @@ def main() -> None:
             batch_y = train_y[
                 seq_idxs[batch_idx * batch_size : (batch_idx + 1) * batch_size]
             ]
-            priors = (
-                torch.ones([batch_size, grid_size**2], dtype=torch.float, device=device)
-                / grid_size**2
-            )
+            if args.start_gt:
+                min_prob = 0.05
+                priors = torch.nn.functional.one_hot(batch_y[:, 0], grid_size**2).to(dtype=torch.float)
+                priors = priors * (1 - min_prob) + min_prob
+                priors = priors / priors.sum(1, keepdim=True)
+            else:
+                priors = (
+                    torch.ones([batch_size, grid_size**2], dtype=torch.float, device=device)
+                    / grid_size**2
+                )
             loss = torch.zeros([1], device=device)
             loss_all = 0.0
             for step in range(seq_len):
@@ -220,6 +227,7 @@ def main() -> None:
                 avg_valid_loss += nll(priors.log(), valid_y[:, step]).item()
 
         avg_loss = avg_loss / batches_per_epoch
+        avg_loss_all = avg_loss_all / batches_per_epoch
 
         wandb.log(
             {

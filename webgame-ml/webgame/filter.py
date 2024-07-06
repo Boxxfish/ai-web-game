@@ -234,6 +234,7 @@ if __name__ == "__main__":
     parser.add_argument("--wall-prob", type=float, default=0.1)
     parser.add_argument("--lkhd-min", type=float, default=0.0)
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
+    parser.add_argument("--start-gt", default=False, action="store_true")
     args = parser.parse_args()
 
     recording_id = "filter_test-" + str(random.randint(0, 10000))
@@ -263,6 +264,11 @@ if __name__ == "__main__":
     else:
         update_fn = manual_update
     b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, args.use_objs, True, args.lkhd_min)
+    if args.start_gt:
+        b_filter.belief = np.zeros(b_filter.belief.shape)
+        play_pos = env.game_state.player.pos
+        x, y = pos_to_grid(play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE)
+        b_filter.belief[y, x] = 1
 
     # Set up policies
     policies = {}
