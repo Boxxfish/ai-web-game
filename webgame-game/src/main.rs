@@ -15,6 +15,7 @@ mod filter;
 mod models;
 mod observations;
 mod agents;
+mod screens;
 
 /// Main entry point for our game.
 fn main() {
