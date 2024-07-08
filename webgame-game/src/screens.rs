@@ -38,8 +38,6 @@ fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                 style: Style {
                     width: Val::Percent(100.),
                     height: Val::Percent(100.),
-                    flex_direction: FlexDirection::Column,
-                    display: Display::Flex,
                     ..default()
                 },
                 background_color: Color::BLACK.into(),
@@ -47,68 +45,95 @@ fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
         ))
         .with_children(|p| {
-            // Top text
-            p.spawn(NodeBundle {
+            // Background
+            p.spawn(ImageBundle {
                 style: Style {
-                    width: Val::Percent(100.),
-                    height: Val::Percent(50.),
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::End,
+                    position_type: PositionType::Absolute,
+                    margin: UiRect::all(Val::Auto),
                     ..default()
                 },
+                image: asset_server.load("ui/title_screen/background.png").into(),
+                z_index: ZIndex::Local(0),
                 ..default()
-            })
-            .with_children(|p| {
-                p.spawn(TextBundle::from_section(
-                    "DEMO:",
-                    TextStyle {
-                        font: font_bold.clone(),
-                        font_size: 40.,
-                        color: Color::WHITE,
-                    },
-                ));
-                p.spawn(TextBundle::from_section(
-                    "PURSUER",
-                    TextStyle {
-                        font: font_bold.clone(),
-                        font_size: 64.,
-                        color: Color::WHITE,
-                    },
-                ));
             });
-            // Options
+            
+            // Text elements
             p.spawn(NodeBundle {
                 style: Style {
                     width: Val::Percent(100.),
-                    height: Val::Percent(50.),
-                    display: Display::Flex,
+                    height: Val::Percent(100.),
                     flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Start,
-                    padding: UiRect::vertical(Val::Px(32.)),
+                    display: Display::Flex,
                     ..default()
                 },
+                background_color: Color::BLACK.with_a(0.9).into(),
+                z_index: ZIndex::Local(1),
                 ..default()
             })
             .with_children(|p| {
-                p.spawn(TextBundle::from_section(
-                    "START",
-                    TextStyle {
-                        font: font_regular.clone(),
-                        font_size: 22.,
-                        color: Color::WHITE,
+                // Top text
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(50.),
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::End,
+                        ..default()
                     },
-                ));
-                p.spawn(TextBundle::from_section(
-                    "ABOUT",
-                    TextStyle {
-                        font: font_regular.clone(),
-                        font_size: 22.,
-                        color: Color::WHITE,
+                    ..default()
+                })
+                .with_children(|p| {
+                    p.spawn(TextBundle::from_section(
+                        "DEMO:",
+                        TextStyle {
+                            font: font_bold.clone(),
+                            font_size: 40.,
+                            color: Color::WHITE,
+                        },
+                    ));
+                    p.spawn(TextBundle::from_section(
+                        "PURSUER",
+                        TextStyle {
+                            font: font_bold.clone(),
+                            font_size: 64.,
+                            color: Color::WHITE,
+                        },
+                    ));
+                });
+                // Options
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(50.),
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Start,
+                        padding: UiRect::vertical(Val::Px(32.)),
+                        ..default()
                     },
-                ));
+                    ..default()
+                })
+                .with_children(|p| {
+                    p.spawn(TextBundle::from_section(
+                        "START",
+                        TextStyle {
+                            font: font_regular.clone(),
+                            font_size: 22.,
+                            color: Color::WHITE,
+                        },
+                    ));
+                    p.spawn(TextBundle::from_section(
+                        "ABOUT",
+                        TextStyle {
+                            font: font_regular.clone(),
+                            font_size: 22.,
+                            color: Color::WHITE,
+                        },
+                    ));
+                });
             });
         });
     // });
