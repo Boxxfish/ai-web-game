@@ -1,10 +1,11 @@
-use std::time::Duration;
-
-use bevy::{prelude::*, render::extract_resource::ExtractResource};
+use bevy::prelude::*;
 
 use crate::{
     gridworld::LevelLoader,
-    ui::menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
+    ui::{
+        menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
+        screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
+    },
 };
 
 /// Describes and handles logic for various screens.
@@ -13,20 +14,14 @@ pub struct ScreensPlayPlugin;
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(ScreenState::TitleScreen)
-            .add_event::<StartFadeEvent>()
-            .add_event::<FadeFinishedEvent>()
+            .add_systems(Startup, init_ui)
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
             .add_systems(OnEnter(ScreenState::Game), init_game)
             .add_systems(OnExit(ScreenState::Game), destroy_game)
             .add_systems(
                 Update,
-                (
-                    handle_title_screen_transition,
-                    handle_title_screen_btns,
-                    handle_fade_transition,
-                    handle_fade_evs,
-                ),
+                (handle_title_screen_transition, handle_title_screen_btns),
             );
     }
 }
@@ -49,24 +44,24 @@ enum TitleScreenAction {
     About,
 }
 
-fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
+/// Holds the state to transition to when the transition finishes.
+#[derive(Resource)]
+struct TransitionNextState(pub TitleScreenAction);
+
+/// Initializes UI elements that persist across scenes.
+fn init_ui(mut commands: Commands) {
+    commands.spawn(ScreenTransitionBundle::default());
+}
+
+fn init_title_screen(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+) {
     let font_bold = asset_server.load("fonts/montserrat/Montserrat-Bold.ttf");
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
 
     commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
-    commands.spawn((
-        ScreenTransition::default(),
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(100.),
-                height: Val::Percent(100.),
-                position_type: PositionType::Absolute,
-                ..default()
-            },
-            background_color: Color::BLACK.into(),
-            z_index: ZIndex::Global(100),
-            ..default()
-        },
-    ));
     commands
         .spawn((
             TitleScreen,
@@ -211,83 +206,3 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
 }
 
 fn destroy_game() {}
-
-/// Holds the state to transition to when the transition finishes.
-#[derive(Resource)]
-struct TransitionNextState(pub TitleScreenAction);
-
-/// Denotes the screen transition.
-#[derive(Component)]
-pub struct ScreenTransition {
-    pub fade_in: bool,
-    pub finished: bool,
-    pub alpha_amount: f32,
-}
-
-impl Default for ScreenTransition {
-    fn default() -> Self {
-        Self {
-            fade_in: true,
-            finished: false,
-            alpha_amount: 1.,
-        }
-    }
-}
-
-/// Sent when the transition should be run.
-#[derive(Event)]
-pub struct StartFadeEvent {
-    pub fade_in: bool,
-}
-
-/// Sent when the transition finished.
-#[derive(Event)]
-pub struct FadeFinishedEvent {
-    pub fade_in: bool,
-}
-
-/// Responds to fade events.
-fn handle_fade_evs(
-    mut transition_query: Query<&mut ScreenTransition>,
-    mut ev_start_fade: EventReader<StartFadeEvent>,
-) {
-    for ev in ev_start_fade.read() {
-        for mut transition in transition_query.iter_mut() {
-            transition.fade_in = ev.fade_in;
-            transition.finished = false;
-        }
-    }
-}
-
-const TRANSITION_SECS: f32 = 0.5;
-const MIN_TRANSITION: f32 = 0.001;
-
-/// Updates the screen transition.
-fn handle_fade_transition(
-    mut transition_query: Query<(&mut ScreenTransition, &mut BackgroundColor)>,
-    time: Res<Time>,
-    mut ev_fade_finished: EventWriter<FadeFinishedEvent>,
-) {
-    for (mut transition, mut bg_color) in transition_query.iter_mut() {
-        if !transition.finished {
-            let delta = (1. / TRANSITION_SECS) * time.delta_seconds();
-            if transition.fade_in {
-                transition.alpha_amount = f32::max(transition.alpha_amount - delta, 0.);
-                if transition.alpha_amount < MIN_TRANSITION {
-                    transition.finished = true;
-                }
-            } else {
-                transition.alpha_amount = f32::min(transition.alpha_amount + delta, 1.);
-                if transition.alpha_amount > (1. - MIN_TRANSITION) {
-                    transition.finished = true;
-                }
-            }
-            bg_color.0.set_a(transition.alpha_amount);
-            if transition.finished {
-                ev_fade_finished.send(FadeFinishedEvent {
-                    fade_in: transition.fade_in,
-                });
-            }
-        }
-    }
-}
