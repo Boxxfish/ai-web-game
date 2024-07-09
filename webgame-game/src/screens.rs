@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use bevy::{prelude::*, render::extract_resource::ExtractResource};
 
-use crate::gridworld::LevelLoader;
+use crate::{
+    gridworld::LevelLoader,
+    ui::menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
+};
 
 /// Describes and handles logic for various screens.
 pub struct ScreensPlayPlugin;
@@ -10,7 +13,6 @@ pub struct ScreensPlayPlugin;
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(ScreenState::TitleScreen)
-            .add_event::<MenuButtonPressedEvent>()
             .add_event::<StartFadeEvent>()
             .add_event::<FadeFinishedEvent>()
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
@@ -21,9 +23,7 @@ impl Plugin for ScreensPlayPlugin {
                 Update,
                 (
                     handle_title_screen_transition,
-                    handle_menu_btns_on_change,
                     handle_title_screen_btns,
-                    handle_menu_btns,
                     handle_fade_transition,
                     handle_fade_evs,
                 ),
@@ -51,12 +51,6 @@ enum TitleScreenAction {
 
 fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font_bold = asset_server.load("fonts/montserrat/Montserrat-Bold.ttf");
-    let font_regular = asset_server.load("fonts/montserrat/Montserrat-Regular.ttf");
-    let btn_text_style = TextStyle {
-        font: font_regular.clone(),
-        font_size: 22.,
-        color: Color::WHITE,
-    };
 
     commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
     commands.spawn((
@@ -164,33 +158,18 @@ fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                         (TitleScreenAction::Start, "START"),
                         (TitleScreenAction::About, "ABOUT"),
                     ] {
-                        p.spawn((
-                            action,
-                            MenuButton::default(),
-                            ButtonBundle {
-                                style: Style {
-                                    display: Display::Flex,
-                                    width: Val::Percent(100.),
-                                    padding: UiRect::axes(Val::Auto, Val::Px(4.)),
-                                    border: UiRect::all(Val::Px(1.)),
-                                    flex_direction: FlexDirection::Column,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::WHITE.with_a(0.).into(),
-                                ..default()
-                            },
-                        ))
-                        .with_children(|p| {
-                            p.spawn(TextBundle::from_section(label, btn_text_style.clone()));
-                        });
+                        p.spawn((action, MenuButtonBundle::from_label(label)));
                     }
                 });
             });
         });
 }
 
-fn destroy_title_screen(mut commands: Commands, screen_query: Query<Entity, With<TitleScreen>>, cam_query: Query<Entity, With<Camera2d>>) {
+fn destroy_title_screen(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<TitleScreen>>,
+    cam_query: Query<Entity, With<Camera2d>>,
+) {
     commands.entity(screen_query.single()).despawn_recursive();
     commands.entity(cam_query.single()).despawn_recursive();
 }
@@ -225,72 +204,10 @@ fn handle_title_screen_transition(
         }
     }
 }
-/// A standard menu button.
-#[derive(Default, Component)]
-pub struct MenuButton {
-    pub hover_start: Duration,
-}
-
-/// Sent by buttons when they're pressed.
-#[derive(Event)]
-pub struct MenuButtonPressedEvent {
-    pub sender: Entity,
-}
-
-/// Handles menu button states on change.
-fn handle_menu_btns_on_change(
-    mut btn_query: Query<
-        (
-            Entity,
-            &mut MenuButton,
-            &Interaction,
-            &mut BackgroundColor,
-            &mut BorderColor,
-        ),
-        (Changed<Interaction>, With<Button>),
-    >,
-    mut ev_btn_pressed: EventWriter<MenuButtonPressedEvent>,
-    time: Res<Time>,
-) {
-    for (e, mut btn, interaction, mut bg_color, mut border_color) in btn_query.iter_mut() {
-        match interaction {
-            Interaction::Pressed => {
-                bg_color.0 = Color::WHITE.with_a(0.);
-                border_color.0 = Color::WHITE;
-                ev_btn_pressed.send(MenuButtonPressedEvent { sender: e });
-            }
-            Interaction::Hovered => {
-                btn.hover_start = time.elapsed();
-                bg_color.0 = Color::WHITE.with_a(0.);
-                border_color.0 = Color::WHITE;
-            }
-            Interaction::None => {
-                bg_color.0 = Color::WHITE.with_a(0.);
-                border_color.0 = Color::WHITE.with_a(0.);
-            }
-        }
-    }
-}
-
-/// Handles menu button states.
-fn handle_menu_btns(
-    mut btn_query: Query<(&mut MenuButton, &Interaction, &mut BackgroundColor), With<Button>>,
-    time: Res<Time>,
-) {
-    for (btn, interaction, mut bg_color) in btn_query.iter_mut() {
-        if interaction == &Interaction::Hovered {
-            let elapsed = (time.elapsed() - btn.hover_start).as_secs_f32();
-            let amount = (f32::cos(elapsed * std::f32::consts::TAU) + 1.) / 2.;
-            bg_color.0 = Color::WHITE.with_a(0.05 * amount);
-        }
-    }
-}
 
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
     commands.insert_resource(LevelLoader::Path("levels/test.json".into()));
-    ev_start_fade.send(StartFadeEvent {
-        fade_in: true,
-    });
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
 fn destroy_game() {}

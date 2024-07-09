@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::ScreensPlayPlugin, world_objs::WorldObjPlugin
+    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::ScreensPlayPlugin, ui::UIPlugin, world_objs::WorldObjPlugin
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -62,6 +62,7 @@ impl Plugin for PlayablePlugin {
                 FilterPlayPlugin,
                 AgentPlayPlugin,
                 ScreensPlayPlugin,
+                UIPlugin,
             ));
     }
 }

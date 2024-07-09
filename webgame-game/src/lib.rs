@@ -11,3 +11,4 @@ pub mod models;
 pub mod observations;
 pub mod agents;
 pub mod screens;
+pub mod ui;
