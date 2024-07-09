@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, render::extract_resource::ExtractResource};
 
 use crate::gridworld::LevelLoader;
 
@@ -11,6 +11,8 @@ impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(ScreenState::TitleScreen)
             .add_event::<MenuButtonPressedEvent>()
+            .add_event::<StartFadeEvent>()
+            .add_event::<FadeFinishedEvent>()
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
             .add_systems(OnEnter(ScreenState::Game), init_game)
@@ -18,9 +20,12 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(
                 Update,
                 (
+                    handle_title_screen_transition,
                     handle_menu_btns_on_change,
                     handle_title_screen_btns,
                     handle_menu_btns,
+                    handle_fade_transition,
+                    handle_fade_evs,
                 ),
             );
     }
@@ -38,7 +43,7 @@ pub enum ScreenState {
 struct TitleScreen;
 
 /// Actions that can be performed on the title screen.
-#[derive(Component)]
+#[derive(Component, Copy, Clone)]
 enum TitleScreenAction {
     Start,
     About,
@@ -54,6 +59,20 @@ fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     };
 
     commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    commands.spawn((
+        ScreenTransition::default(),
+        NodeBundle {
+            style: Style {
+                width: Val::Percent(100.),
+                height: Val::Percent(100.),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            background_color: Color::BLACK.into(),
+            z_index: ZIndex::Global(100),
+            ..default()
+        },
+    ));
     commands
         .spawn((
             TitleScreen,
@@ -171,25 +190,41 @@ fn init_title_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn destroy_title_screen(mut commands: Commands, screen_query: Query<Entity, With<TitleScreen>>) {
-    let screen_e = screen_query.single();
-    commands.entity(screen_e).despawn_recursive();
+fn destroy_title_screen(mut commands: Commands, screen_query: Query<Entity, With<TitleScreen>>, cam_query: Query<Entity, With<Camera2d>>) {
+    commands.entity(screen_query.single()).despawn_recursive();
+    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 fn handle_title_screen_btns(
     mut ev_btn_pressed: EventReader<MenuButtonPressedEvent>,
     action_query: Query<&TitleScreenAction>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+    mut commands: Commands,
 ) {
     for ev in ev_btn_pressed.read() {
         if let Ok(action) = action_query.get(ev.sender) {
-            match action {
-                TitleScreenAction::Start => info!("Start"),
-                TitleScreenAction::About => info!("About"),
-            }
+            ev_start_fade.send(StartFadeEvent { fade_in: false });
+            commands.insert_resource(TransitionNextState(*action));
         }
     }
 }
 
+fn handle_title_screen_transition(
+    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut commands: Commands,
+    transition_state: Option<Res<TransitionNextState>>,
+    mut next_state: ResMut<NextState<ScreenState>>,
+) {
+    for ev in ev_fade_finished.read() {
+        if !ev.fade_in {
+            commands.remove_resource::<TransitionNextState>();
+            next_state.0 = match transition_state.as_ref().unwrap().0 {
+                TitleScreenAction::Start => Some(ScreenState::Game),
+                TitleScreenAction::About => Some(ScreenState::Game),
+            }
+        }
+    }
+}
 /// A standard menu button.
 #[derive(Default, Component)]
 pub struct MenuButton {
@@ -251,8 +286,91 @@ fn handle_menu_btns(
     }
 }
 
-fn init_game(mut commands: Commands) {
+fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
     commands.insert_resource(LevelLoader::Path("levels/test.json".into()));
+    ev_start_fade.send(StartFadeEvent {
+        fade_in: true,
+    });
 }
 
 fn destroy_game() {}
+
+/// Holds the state to transition to when the transition finishes.
+#[derive(Resource)]
+struct TransitionNextState(pub TitleScreenAction);
+
+/// Denotes the screen transition.
+#[derive(Component)]
+pub struct ScreenTransition {
+    pub fade_in: bool,
+    pub finished: bool,
+    pub alpha_amount: f32,
+}
+
+impl Default for ScreenTransition {
+    fn default() -> Self {
+        Self {
+            fade_in: true,
+            finished: false,
+            alpha_amount: 1.,
+        }
+    }
+}
+
+/// Sent when the transition should be run.
+#[derive(Event)]
+pub struct StartFadeEvent {
+    pub fade_in: bool,
+}
+
+/// Sent when the transition finished.
+#[derive(Event)]
+pub struct FadeFinishedEvent {
+    pub fade_in: bool,
+}
+
+/// Responds to fade events.
+fn handle_fade_evs(
+    mut transition_query: Query<&mut ScreenTransition>,
+    mut ev_start_fade: EventReader<StartFadeEvent>,
+) {
+    for ev in ev_start_fade.read() {
+        for mut transition in transition_query.iter_mut() {
+            transition.fade_in = ev.fade_in;
+            transition.finished = false;
+        }
+    }
+}
+
+const TRANSITION_SECS: f32 = 0.5;
+const MIN_TRANSITION: f32 = 0.001;
+
+/// Updates the screen transition.
+fn handle_fade_transition(
+    mut transition_query: Query<(&mut ScreenTransition, &mut BackgroundColor)>,
+    time: Res<Time>,
+    mut ev_fade_finished: EventWriter<FadeFinishedEvent>,
+) {
+    for (mut transition, mut bg_color) in transition_query.iter_mut() {
+        if !transition.finished {
+            let delta = (1. / TRANSITION_SECS) * time.delta_seconds();
+            if transition.fade_in {
+                transition.alpha_amount = f32::max(transition.alpha_amount - delta, 0.);
+                if transition.alpha_amount < MIN_TRANSITION {
+                    transition.finished = true;
+                }
+            } else {
+                transition.alpha_amount = f32::min(transition.alpha_amount + delta, 1.);
+                if transition.alpha_amount > (1. - MIN_TRANSITION) {
+                    transition.finished = true;
+                }
+            }
+            bg_color.0.set_a(transition.alpha_amount);
+            if transition.finished {
+                ev_fade_finished.send(FadeFinishedEvent {
+                    fade_in: transition.fade_in,
+                });
+            }
+        }
+    }
+}
