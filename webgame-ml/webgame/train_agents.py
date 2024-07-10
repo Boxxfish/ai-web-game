@@ -52,6 +52,7 @@ class Config:
     eval_every: int = 2  # How many iterations before evaluating.
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     entropy_coeff: float = 0.001  # Probability of a cell containing a wall.
+    gradient_clip: float = 0.1  # Gradient clipping for policy.
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
@@ -251,6 +252,7 @@ if __name__ == "__main__":
                 cfg.lambda_,
                 cfg.epsilon,
                 entropy_coeff=cfg.entropy_coeff,
+                gradient_clip=cfg.gradient_clip,
             )
             agents[agent].buffer.clear()
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
