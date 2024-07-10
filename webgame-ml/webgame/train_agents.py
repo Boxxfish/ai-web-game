@@ -31,7 +31,9 @@ _: Any
 @dataclass
 class Config:
     out_dir: str = "./runs"  # Output directory.
-    num_envs: int = 64  # Number of environments to step through at once during sampling.
+    num_envs: int = (
+        64  # Number of environments to step through at once during sampling.
+    )
     train_steps: int = (
         32  # Number of steps to step through during sampling. Total # of samples is train_steps * num_envs/
     )
@@ -51,12 +53,15 @@ class Config:
     save_every: int = 10  # How many iterations to wait before saving.
     eval_every: int = 2  # How many iterations before evaluating.
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
-    entropy_coeff: float = 0.001  # Probability of a cell containing a wall.
+    entropy_coeff: float = 0.001  # Entropy bonus applied.
     gradient_clip: float = 0.1  # Gradient clipping for policy.
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
     update_chkpt: str = ""  # Checkpoint to use for filter.
+    player_sees_visible_cells: bool = (
+        False  # Whether the player should have ground truth information on the pursuer.
+    )
     device: str = "cuda"  # Device to use during training.
 
 
@@ -93,6 +98,7 @@ class ValueNet(nn.Module):
         features = self.backbone(grid, objs, objs_attn_mask)
         values = self.net(features)
         return values
+
 
 class AgentData:
     def __init__(
@@ -146,7 +152,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = Config(**args.__dict__)
     device = torch.device(cfg.device)
-    
+
     assert cfg.update_fn in ["manual", "model", "gt"]
     if cfg.update_chkpt:
         assert cfg.update_fn == "model"
@@ -189,14 +195,16 @@ if __name__ == "__main__":
 
     env = ParallelVecWrapper(
         [
-            lambda: GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer)
+            lambda: GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer, player_sees_visible_cells=cfg.player_sees_visible_cells)
             for _ in range(cfg.num_envs)
         ]
     )
-    test_env = GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer)
+    test_env = GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer, player_sees_visible_cells=cfg.player_sees_visible_cells)
 
     # Initialize policy and value networks
     channels = 9
+    if cfg.player_sees_visible_cells:
+        channels = 10
     grid_size = 8
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM

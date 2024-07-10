@@ -192,6 +192,20 @@ if __name__ == "__main__":
     import random
     from argparse import ArgumentParser
 
+    parser = ArgumentParser()
+    parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--pursuer-chkpt", type=str, default=None)
+    parser.add_argument("--player-chkpt", type=str, default=None)
+    parser.add_argument("--use-pos", action="store_true")
+    parser.add_argument("--use-objs", action="store_true")
+    parser.add_argument("--use-gt", action="store_true")
+    parser.add_argument("--wall-prob", type=float, default=0.1)
+    parser.add_argument("--lkhd-min", type=float, default=0.0)
+    parser.add_argument("--insert-visible-cells", default=False, action="store_true")
+    parser.add_argument("--start-gt", default=False, action="store_true")
+    parser.add_argument("--player-sees-visible-cells", default=False, action="store_true")
+    args = parser.parse_args()
+
     def heuristic_policy(
         agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     ) -> int:
@@ -208,8 +222,11 @@ if __name__ == "__main__":
         use_pos: bool,
         use_objs: bool,
     ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
+        channels = 9
+        if args.player_sees_visible_cells:
+            channels = 10
         p_net = PolicyNet(
-            9, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None
+            channels, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None
         )
         load_model(p_net, chkpt_path)
 
@@ -224,19 +241,6 @@ if __name__ == "__main__":
 
         return policy
 
-    parser = ArgumentParser()
-    parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--pursuer-chkpt", type=str, default=None)
-    parser.add_argument("--player-chkpt", type=str, default=None)
-    parser.add_argument("--use-pos", action="store_true")
-    parser.add_argument("--use-objs", action="store_true")
-    parser.add_argument("--use-gt", action="store_true")
-    parser.add_argument("--wall-prob", type=float, default=0.1)
-    parser.add_argument("--lkhd-min", type=float, default=0.0)
-    parser.add_argument("--insert-visible-cells", default=False, action="store_true")
-    parser.add_argument("--start-gt", default=False, action="store_true")
-    args = parser.parse_args()
-
     recording_id = "filter_test-" + str(random.randint(0, 10000))
     rr.init(application_id="Pursuer", recording_id=recording_id)
     rr.connect()
@@ -246,6 +250,7 @@ if __name__ == "__main__":
         use_objs=args.use_objs,
         visualize=True,
         recording_id=recording_id,
+        player_sees_visible_cells=args.player_sees_visible_cells,
     )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
