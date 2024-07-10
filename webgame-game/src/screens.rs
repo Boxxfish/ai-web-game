@@ -1,7 +1,10 @@
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    ui::{UiBatch, UiImageBindGroups},
+};
 
 use crate::{
-    gridworld::LevelLoader,
+    gridworld::{LevelLoader, GRID_CELL_SIZE},
     ui::{
         menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
@@ -17,11 +20,18 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(Startup, init_ui)
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
-            .add_systems(OnEnter(ScreenState::Game), init_game)
-            .add_systems(OnExit(ScreenState::Game), destroy_game)
             .add_systems(
                 Update,
-                (handle_title_screen_transition, handle_title_screen_btns),
+                (handle_title_screen_transition, handle_title_screen_btns)
+                    .run_if(in_state(ScreenState::TitleScreen)),
+            )
+            .add_systems(OnEnter(ScreenState::Game), init_game)
+            .add_systems(OnExit(ScreenState::Game), destroy_game)
+            .add_systems(OnEnter(ScreenState::About), init_about)
+            .add_systems(OnExit(ScreenState::About), destroy_about)
+            .add_systems(
+                Update,
+                (handle_about_transition, handle_about_btns).run_if(in_state(ScreenState::About)),
             );
     }
 }
@@ -31,6 +41,7 @@ impl Plugin for ScreensPlayPlugin {
 pub enum ScreenState {
     TitleScreen,
     Game,
+    About,
 }
 
 /// Denotes the title screen.
@@ -188,21 +199,178 @@ fn handle_title_screen_transition(
     mut commands: Commands,
     transition_state: Option<Res<TransitionNextState>>,
     mut next_state: ResMut<NextState<ScreenState>>,
+    screen_query: Query<Entity, With<TitleScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
-        if !ev.fade_in {
+        if !ev.fade_in && !screen_query.is_empty() {
             commands.remove_resource::<TransitionNextState>();
             next_state.0 = match transition_state.as_ref().unwrap().0 {
                 TitleScreenAction::Start => Some(ScreenState::Game),
-                TitleScreenAction::About => Some(ScreenState::Game),
+                TitleScreenAction::About => Some(ScreenState::About),
             }
         }
     }
 }
 
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_translation(Vec3::new(
+                GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
+                -300.,
+                700.,
+            ))
+            .with_rotation(Quat::from_rotation_x(0.5)),
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: 0.4,
+                ..default()
+            }),
+            ..default()
+        },
+        IsDefaultUiCamera,
+    ));
+
     commands.insert_resource(LevelLoader::Path("levels/test.json".into()));
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
 fn destroy_game() {}
+
+/// Denotes the about screen.
+#[derive(Component)]
+struct AboutScreen;
+
+fn init_about(
+    mut commands: Commands,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+    asset_server: Res<AssetServer>,
+) {
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
+
+    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    commands
+        .spawn((
+            AboutScreen,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    ..default()
+                },
+                background_color: Color::BLACK.into(),
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            // Background
+            p.spawn(ImageBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    margin: UiRect::all(Val::Auto),
+                    ..default()
+                },
+                image: asset_server.load("ui/title_screen/background.png").into(),
+                z_index: ZIndex::Local(0),
+                ..default()
+            });
+
+            // Text elements
+            p.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    flex_direction: FlexDirection::Column,
+                    display: Display::Flex,
+                    ..default()
+                },
+                background_color: Color::BLACK.with_a(0.95).into(),
+                z_index: ZIndex::Local(1),
+                ..default()
+            })
+            .with_children(|p| {
+                p.spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        display: Display::Flex,
+                        padding: UiRect::axes(Val::Px(32.), Val::Px(16.)),
+                        ..default()
+                    },
+                    z_index: ZIndex::Local(1),
+                    ..default()
+                }).with_children(|p| {
+                let font_regular = asset_server.load("fonts/montserrat/Montserrat-Regular.ttf");
+                let color = Color::WHITE;
+                let heading = TextStyle {
+                    font: font_regular.clone(),
+                    font_size: 28.,
+                    color,
+                };
+                let regular = TextStyle {
+                    font: font_regular.clone(),
+                    font_size: 16.,
+                    color,
+                };
+                p.spawn(TextBundle::from_sections([
+                    TextSection::new("About\n", heading.clone()),
+                    TextSection::new("\nThis game demonstrates how machine learning can be used to create intelligent pursuer-type enemies.\n\n", regular.clone()),
+                    TextSection::new(
+                        "The pursuer is equipped with a discrete Bayes filter, allowing it to use evidence from its environment to track you down. It does this by generating a map of where it thinks you are and continuously updating it based on data from its sensors. You can toggle this map in-game to see where the pursuer thinks you are.\n\n", 
+                        regular.clone()
+                    ),
+                    TextSection::new(
+                        "The pursuer has also been trained to chase after you, using reinforcement learning.\n\n",
+                        regular.clone()
+                    ),
+                    TextSection::new(
+                        "Instructions\n",
+                        heading.clone()
+                    ),
+                    TextSection::new(
+                        "\nFind the key in each level and use it to escape. Be careful, though — there's someone locked in with you roaming the halls, and you REALLY don't want to come face to face with them!\n\n",
+                        regular.clone()
+                    ),
+                ]));
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Px(128.),
+                        margin: UiRect::axes(Val::Auto, Val::Auto),
+                        ..default()
+                    },
+                    ..default()
+                }).with_children(|p| {
+                    p.spawn(MenuButtonBundle::from_label("Back"));
+                });
+            });
+        });
+    });
+}
+
+fn destroy_about(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<AboutScreen>>,
+    cam_query: Query<Entity, With<Camera2d>>,
+) {
+    commands.entity(screen_query.single()).despawn_recursive();
+    commands.entity(cam_query.single()).despawn_recursive();
+}
+
+fn handle_about_btns(
+    mut ev_btn_pressed: EventReader<MenuButtonPressedEvent>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+) {
+    for _ in ev_btn_pressed.read() {
+        ev_start_fade.send(StartFadeEvent { fade_in: false });
+    }
+}
+
+fn handle_about_transition(
+    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut next_state: ResMut<NextState<ScreenState>>,
+    screen_query: Query<Entity, With<AboutScreen>>,
+) {
+    for ev in ev_fade_finished.read() {
+        if !ev.fade_in && !screen_query.is_empty() {
+            next_state.0 = Some(ScreenState::TitleScreen);
+        }
+    }
+}

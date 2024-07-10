@@ -212,23 +212,7 @@ fn setup_entities(
     asset_server: Res<AssetServer>,
     is_playable: Option<Res<IsPlayable>>,
 ) {
-    // Add camera + light
-    commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(
-                GRID_CELL_SIZE * (((level.size + 1) / 2) as f32),
-                -300.,
-                700.,
-            ))
-            .with_rotation(Quat::from_rotation_x(0.5)),
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: 0.4,
-                ..default()
-            }),
-            ..default()
-        },
-        IsDefaultUiCamera,
-    ));
+    // Add light
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             illuminance: 2000.,
