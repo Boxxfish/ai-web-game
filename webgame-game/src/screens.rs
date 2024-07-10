@@ -25,6 +25,13 @@ impl Plugin for ScreensPlayPlugin {
                 (handle_title_screen_transition, handle_title_screen_btns)
                     .run_if(in_state(ScreenState::TitleScreen)),
             )
+            .add_systems(OnEnter(ScreenState::LevelSelect), init_level_select)
+            .add_systems(OnExit(ScreenState::LevelSelect), destroy_level_select)
+            .add_systems(
+                Update,
+                (handle_level_select_transition, handle_level_select_btns)
+                    .run_if(in_state(ScreenState::LevelSelect)),
+            )
             .add_systems(OnEnter(ScreenState::Game), init_game)
             .add_systems(OnExit(ScreenState::Game), destroy_game)
             .add_systems(OnEnter(ScreenState::About), init_about)
@@ -40,6 +47,7 @@ impl Plugin for ScreensPlayPlugin {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, States)]
 pub enum ScreenState {
     TitleScreen,
+    LevelSelect,
     Game,
     About,
 }
@@ -57,7 +65,7 @@ enum TitleScreenAction {
 
 /// Holds the state to transition to when the transition finishes.
 #[derive(Resource)]
-struct TransitionNextState(pub TitleScreenAction);
+struct TransitionNextState<T>(pub T);
 
 /// Initializes UI elements that persist across scenes.
 fn init_ui(mut commands: Commands) {
@@ -197,15 +205,15 @@ fn handle_title_screen_btns(
 fn handle_title_screen_transition(
     mut ev_fade_finished: EventReader<FadeFinishedEvent>,
     mut commands: Commands,
-    transition_state: Option<Res<TransitionNextState>>,
+    transition_state: Option<Res<TransitionNextState<TitleScreenAction>>>,
     mut next_state: ResMut<NextState<ScreenState>>,
     screen_query: Query<Entity, With<TitleScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
         if !ev.fade_in && !screen_query.is_empty() {
-            commands.remove_resource::<TransitionNextState>();
+            commands.remove_resource::<TransitionNextState<TitleScreenAction>>();
             next_state.0 = match transition_state.as_ref().unwrap().0 {
-                TitleScreenAction::Start => Some(ScreenState::Game),
+                TitleScreenAction::Start => Some(ScreenState::LevelSelect),
                 TitleScreenAction::About => Some(ScreenState::About),
             }
         }
@@ -230,11 +238,156 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
         IsDefaultUiCamera,
     ));
 
-    commands.insert_resource(LevelLoader::Path("levels/test.json".into()));
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
 fn destroy_game() {}
+
+/// Denotes the level select screen.
+#[derive(Component)]
+struct LevelSelectScreen;
+
+/// A button that loads a level.
+#[derive(Component)]
+struct LevelSelectButton {
+    pub level: String,
+}
+
+#[derive(Component, Clone)]
+enum LevelSelectAction {
+    Level(String),
+    Back,
+}
+
+fn init_level_select(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+) {
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
+
+    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    commands
+        .spawn((
+            LevelSelectScreen,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    ..default()
+                },
+                background_color: Color::BLACK.into(),
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            // Background
+            p.spawn(ImageBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    margin: UiRect::all(Val::Auto),
+                    ..default()
+                },
+                image: asset_server.load("ui/title_screen/background.png").into(),
+                z_index: ZIndex::Local(0),
+                ..default()
+            });
+
+            // Main elements
+            p.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    flex_direction: FlexDirection::Column,
+                    display: Display::Flex,
+                    ..default()
+                },
+                background_color: Color::BLACK.with_a(0.95).into(),
+                z_index: ZIndex::Local(1),
+                ..default()
+            })
+            .with_children(|p| {
+                p.spawn(NodeBundle {
+                    style: Style {
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        column_gap: Val::Px(16.),
+                        row_gap: Val::Px(16.),
+                        margin: UiRect::axes(Val::Auto, Val::Px(8.)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    for level in ["test.json", "test.json", "test.json"] {
+                        // let image = asset_server.load(format!("ui/level_images/{level}.png"));
+                        p.spawn((
+                            LevelSelectButton {
+                                level: format!("levels/{level}.json"),
+                            },
+                            MenuButtonBundle::from_label(level),
+                        ));
+                    }
+                });
+
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Px(128.),
+                        margin: UiRect::axes(Val::Auto, Val::Auto),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    p.spawn(MenuButtonBundle::from_label("Back"));
+                });
+            });
+        });
+}
+
+fn destroy_level_select(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<LevelSelectScreen>>,
+    cam_query: Query<Entity, With<Camera2d>>,
+) {
+    commands.entity(screen_query.single()).despawn_recursive();
+    commands.entity(cam_query.single()).despawn_recursive();
+}
+
+fn handle_level_select_btns(
+    mut ev_btn_pressed: EventReader<MenuButtonPressedEvent>,
+    action_query: Query<&LevelSelectAction>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+    mut commands: Commands,
+) {
+    for ev in ev_btn_pressed.read() {
+        if let Ok(action) = action_query.get(ev.sender) {
+            ev_start_fade.send(StartFadeEvent { fade_in: false });
+            commands.insert_resource(TransitionNextState(action.clone()));
+        }
+    }
+}
+
+fn handle_level_select_transition(
+    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut commands: Commands,
+    transition_state: Option<Res<TransitionNextState<LevelSelectAction>>>,
+    mut next_state: ResMut<NextState<ScreenState>>,
+    screen_query: Query<Entity, With<TitleScreen>>,
+) {
+    for ev in ev_fade_finished.read() {
+        if !ev.fade_in && !screen_query.is_empty() {
+            commands.remove_resource::<TransitionNextState<LevelSelectAction>>();
+            next_state.0 = match &transition_state.as_ref().unwrap().0 {
+                LevelSelectAction::Level(level) => {
+                    commands.insert_resource(LevelLoader::Path(level.clone()));
+                    Some(ScreenState::Game)
+                }
+                LevelSelectAction::Back => Some(ScreenState::TitleScreen),
+            }
+        }
+    }
+}
 
 /// Denotes the about screen.
 #[derive(Component)]
