@@ -24,6 +24,7 @@ def train_ppo(
     gradient_steps: int = 1,
     use_masks: bool = False,
     entropy_coeff: float = 0.0,
+    gradient_clip: float = 1.0,
 ) -> Tuple[float, float]:
     """
     Performs the PPO training loop. Returns a tuple of total policy loss and
@@ -90,6 +91,7 @@ def train_ppo(
             total_v_loss += v_loss.item()
 
             if (i + 1) % gradient_steps == 0:
+                torch.nn.utils.clip_grad.clip_grad_norm_(p_net.parameters(), gradient_clip)
                 p_opt.step()
                 v_opt.step()
                 p_opt.zero_grad()

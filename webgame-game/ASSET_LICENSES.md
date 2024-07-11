@@ -2,3 +2,7 @@
     - CC0: https://kenney.nl/assets/furniture-kit
 - assets/characters
     - CC0: https://kenney.nl/assets/animated-characters-2
+- assets/fonts/montserrat
+    - Open Font License: https://fonts.google.com/specimen/Montserrat
+- assets/input_prompts
+    - CC0: https://kenney.nl/assets/input-prompts

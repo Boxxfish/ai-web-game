@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, world_objs::WorldObjPlugin
+    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::ScreensPlayPlugin, ui::UIPlugin, world_objs::WorldObjPlugin
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -50,14 +50,20 @@ impl Plugin for PlayablePlugin {
             .insert_resource(ClearColor(Color::BLACK))
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Your Project (Game)".into(),
+                    title: "Demo: Pursuer".into(),
                     resolution: (640., 360.).into(),
                     ..default()
                 }),
                 ..default()
             }))
-            // .add_plugins(RapierDebugRenderPlugin::default())
-            .add_plugins((GridworldPlayPlugin, ObserverPlayPlugin, FilterPlayPlugin, AgentPlayPlugin));
+            .add_plugins((
+                GridworldPlayPlugin,
+                ObserverPlayPlugin,
+                FilterPlayPlugin,
+                AgentPlayPlugin,
+                ScreensPlayPlugin,
+                UIPlugin,
+            ));
     }
 }
 
@@ -66,8 +72,7 @@ pub struct ReleaseCfgPlugin;
 
 impl Plugin for ReleaseCfgPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PlayablePlugin, CoreGamePlugin))
-            .insert_resource(LevelLoader::Path("levels/test.json".into()));
+        app.add_plugins((PlayablePlugin, CoreGamePlugin));
     }
 }
 

@@ -99,6 +99,12 @@ class Backbone(nn.Module):
         if self.use_objs:
             assert objs is not None
             assert objs_attn_mask is not None
+            batch_attn_mask = ~(
+                (~objs_attn_mask).sum(1).to(torch.bool)
+            )  # True if a batch doesn't have objects
+            objs_attn_mask[:, 0] = (
+                False  # Makes it so at least one element is always attendable, batches with no objects get masked out
+            )
             objs = self.proj(objs.permute(0, 2, 1)).permute(
                 0, 2, 1
             )  # Shape: (batch_size, max_obj_size, proj_dim)
@@ -112,19 +118,20 @@ class Backbone(nn.Module):
             attns = [self.attn1, self.attn2, self.attn3]
             bns = [self.bn1, self.bn2, self.bn3]
             for attn, bn in zip(attns, bns):
-                attn_grid_features = torch.nan_to_num(
-                    attn(
-                        query=grid_features,
-                        key=objs,
-                        value=objs,
-                        key_padding_mask=objs_attn_mask,
-                    )[0],
-                    0.0,
-                )  # Sometimes there are no objects, causing NANs
-                grid_features = grid_features + attn_grid_features
+                attn_grid_features = attn(
+                    query=grid_features,
+                    key=objs,
+                    value=objs,
+                    key_padding_mask=objs_attn_mask,
+                )[0]
+                attn_grid_features[batch_attn_mask, :, :] = 0.0
                 if self.use_bn:
-                    grid_features = bn(grid_features.permute(0, 2, 1)).permute(0, 2, 1)
-                grid_features = nn.functional.silu(grid_features)
+                    attn_grid_features = bn(
+                        attn_grid_features.permute(0, 2, 1)
+                    ).permute(0, 2, 1)
+                attn_grid_features = nn.functional.silu(attn_grid_features)
+                attn_grid_features[batch_attn_mask, :, :] = 0.0
+                grid_features = grid_features + attn_grid_features
             grid_features = grid_features.view(orig_shape).permute(
                 0, 3, 1, 2
             )  # Shape: (batch_size, grid_features_dim, grid_size, grid_size)
@@ -167,6 +174,7 @@ class MeasureModel(nn.Module):
         return self.out_net(grid_features).squeeze(
             1
         )  # Shape: (batch_size, grid_size, grid_size)
+
 
 class PolicyNet(nn.Module):
     def __init__(

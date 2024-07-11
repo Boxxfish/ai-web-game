@@ -47,6 +47,7 @@ def main() -> None:
     parser.add_argument("--lkhd-min", type=float, default=0.001)
     parser.add_argument("--only-opt-last", default=False, action="store_true")
     parser.add_argument("--start-gt", default=False, action="store_true")
+    parser.add_argument("--weight-decay", type=float, default=0.0)
 
     args = parser.parse_args()
     device = torch.device(args.device)
@@ -104,7 +105,7 @@ def main() -> None:
         (max_objs, obj_dim) if args.use_objs else None,
     )
     model.to(device=device)
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr,  weight_decay=args.weight_decay)
 
     wandb_config = {
         "experiment": "bayes",

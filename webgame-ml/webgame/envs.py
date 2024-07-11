@@ -8,7 +8,7 @@ from webgame_rust import AgentState, GameWrapper, GameState
 import numpy as np
 import functools
 
-from webgame.common import process_obs
+from webgame.common import pos_to_grid, process_obs
 from webgame.filter import BayesFilter
 
 # The maximum number of object vectors supported by the environment.
@@ -67,6 +67,7 @@ class GameEnv(pettingzoo.ParallelEnv):
             ]
         ] = None,
         insert_visible_cells: bool = False,
+        player_sees_visible_cells: bool = False,
     ):
         self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -78,6 +79,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.update_fn = update_fn
         self.filters: Optional[Dict[str, BayesFilter]] = None
         self.insert_visible_cells = insert_visible_cells
+        self.player_sees_visible_cells = player_sees_visible_cells
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -163,10 +165,13 @@ class GameEnv(pettingzoo.ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, _: str) -> gym.Space:
+        grid_channels = 2
+        if self.player_sees_visible_cells:
+            grid_channels = 3
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (2, 8, 8)),
+                gym.spaces.Box(0, 1, (grid_channels, 8, 8)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )
@@ -231,30 +236,44 @@ class GameEnv(pettingzoo.ParallelEnv):
         attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
         agent_name = ["player", "pursuer"][int(is_pursuer)]
-        extra_channel = np.zeros(walls.shape, dtype=float)
-        assert not (self.filters is not None and self.insert_visible_cells)
-        if self.filters:
-            extra_channel = self.filters[agent_name].localize(
-                process_obs(
-                    (
-                        obs_vec,
-                        np.stack([walls, extra_channel]),
-                        obs_vec,
-                        attn_mask,
-                    )
-                ),
-                game_state,
-                agent_state,
+        
+        if self.player_sees_visible_cells and not is_pursuer:
+            loc_channel = np.zeros(walls.shape, dtype=float)
+            pursuer_pos = game_state.pursuer.pos
+            x, y = pos_to_grid(pursuer_pos.x, pursuer_pos.y, game_state.level_size, CELL_SIZE)
+            loc_channel[y, x] = 1
+            visible_cells = game_state.pursuer.visible_cells
+            cells_channel = np.array(visible_cells).reshape(
+                [game_state.level_size, game_state.level_size]
             )
-        if self.insert_visible_cells:
-            assert self.game_state
-            visible_cells = [self.game_state.player, self.game_state.pursuer][
-                int(is_pursuer)
-            ].visible_cells
-            extra_channel = np.array(visible_cells).reshape(
-                [self.game_state.level_size, self.game_state.level_size]
-            )
-        grid = np.stack([walls, extra_channel])
+            grid = np.stack([walls, loc_channel, cells_channel])
+        else:
+            extra_channel = np.zeros(walls.shape, dtype=float)
+            assert not (self.filters is not None and self.insert_visible_cells)
+            if self.filters:
+                extra_channel = self.filters[agent_name].localize(
+                    process_obs(
+                        (
+                            obs_vec,
+                            np.stack([walls, extra_channel]),
+                            obs_vec,
+                            attn_mask,
+                        )
+                    ),
+                    game_state,
+                    agent_state,
+                )
+            if self.insert_visible_cells:
+                visible_cells = [game_state.player, game_state.pursuer][
+                    int(is_pursuer)
+                ].visible_cells
+                extra_channel = np.array(visible_cells).reshape(
+                    [game_state.level_size, game_state.level_size]
+                )
+            if self.player_sees_visible_cells:
+                grid = np.stack([walls, extra_channel, np.zeros(walls.shape, dtype=float)])
+            else:
+                grid = np.stack([walls, extra_channel])
 
         return (obs_vec, grid, obs_vecs, attn_mask)
 
