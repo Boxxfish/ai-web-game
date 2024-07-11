@@ -23,11 +23,9 @@ impl Plugin for ObserverPlugin {
                 update_observers.after(move_agents),
                 update_vm_data,
                 add_vis_cones,
-                remove_vis_cones,
                 draw_observer_areas
                     .after(update_observers)
-                    .after(add_vis_cones)
-                    .after(remove_vis_cones),
+                    .after(add_vis_cones),
             ),
         );
     }
@@ -269,13 +267,6 @@ fn add_vis_cones(
                 VisCone,
             ));
         });
-    }
-}
-
-/// If `DebugObserver` is removed, removes the vision cone.
-fn remove_vis_cones(mut observer_query: RemovedComponents<DebugObserver>, mut commands: Commands) {
-    for e in observer_query.read() {
-        commands.entity(e).despawn();
     }
 }
 

@@ -1,12 +1,17 @@
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 
-pub struct ScreenTransitionPlugin;
+#[derive(Default)]
+pub struct ScreenTransitionPlugin<T: States> {
+    t: PhantomData<T>,
+}
 
-impl Plugin for ScreenTransitionPlugin {
+impl<T: States> Plugin for ScreenTransitionPlugin<T> {
     fn build(&self, app: &mut App) {
         app.add_event::<StartFadeEvent>()
-            .add_event::<FadeFinishedEvent>()
-            .add_systems(Update, (handle_fade_transition, handle_fade_evs));
+            .add_event::<FadeFinishedEvent<T>>()
+            .add_systems(Update, (handle_fade_transition::<T>, handle_fade_evs));
     }
 }
 
@@ -61,8 +66,10 @@ pub struct StartFadeEvent {
 }
 
 /// Sent when the transition finished.
+/// This also sends the current state when this was sent.
 #[derive(Event)]
-pub struct FadeFinishedEvent {
+pub struct FadeFinishedEvent<T: States> {
+    pub from_state: T,
     pub fade_in: bool,
 }
 
@@ -83,10 +90,11 @@ const TRANSITION_SECS: f32 = 0.5;
 const MIN_TRANSITION: f32 = 0.001;
 
 /// Updates the screen transition.
-fn handle_fade_transition(
+fn handle_fade_transition<T: States>(
     mut transition_query: Query<(&mut ScreenTransition, &mut BackgroundColor)>,
     time: Res<Time>,
-    mut ev_fade_finished: EventWriter<FadeFinishedEvent>,
+    mut ev_fade_finished: EventWriter<FadeFinishedEvent<T>>,
+    state: Res<State<T>>,
 ) {
     for (mut transition, mut bg_color) in transition_query.iter_mut() {
         if !transition.finished {
@@ -105,6 +113,7 @@ fn handle_fade_transition(
             bg_color.0.set_a(transition.alpha_amount);
             if transition.finished {
                 ev_fade_finished.send(FadeFinishedEvent {
+                    from_state: state.get().to_owned(),
                     fade_in: transition.fade_in,
                 });
             }

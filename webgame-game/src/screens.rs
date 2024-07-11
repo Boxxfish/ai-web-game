@@ -4,7 +4,7 @@ use bevy::{
 };
 
 use crate::{
-    gridworld::{LevelLoader, GRID_CELL_SIZE},
+    gridworld::{LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     ui::{
         menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
@@ -29,23 +29,28 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(OnExit(ScreenState::LevelSelect), destroy_level_select)
             .add_systems(
                 Update,
-                (handle_level_select_transition.before(init_level_select), handle_level_select_btns)
+                (handle_level_select_transition, handle_level_select_btns)
                     .run_if(in_state(ScreenState::LevelSelect)),
             )
             .add_systems(OnEnter(ScreenState::Game), init_game)
             .add_systems(OnExit(ScreenState::Game), destroy_game)
+            .add_systems(
+                Update,
+                (handle_game_transition, handle_game_btns).run_if(in_state(ScreenState::Game)),
+            )
             .add_systems(OnEnter(ScreenState::About), init_about)
             .add_systems(OnExit(ScreenState::About), destroy_about)
             .add_systems(
                 Update,
-                (handle_about_transition.before(init_about), handle_about_btns).run_if(in_state(ScreenState::About)),
+                (handle_about_transition, handle_about_btns).run_if(in_state(ScreenState::About)),
             );
     }
 }
 
 /// The screens we can be on.
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, States)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, States, Default)]
 pub enum ScreenState {
+    #[default]
     TitleScreen,
     LevelSelect,
     Game,
@@ -203,14 +208,13 @@ fn handle_title_screen_btns(
 }
 
 fn handle_title_screen_transition(
-    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut ev_fade_finished: EventReader<FadeFinishedEvent<ScreenState>>,
     mut commands: Commands,
     transition_state: Option<Res<TransitionNextState<TitleScreenAction>>>,
     mut next_state: ResMut<NextState<ScreenState>>,
-    screen_query: Query<Entity, With<TitleScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
-        if !ev.fade_in && !screen_query.is_empty() {
+        if !ev.fade_in && ev.from_state == ScreenState::TitleScreen {
             commands.remove_resource::<TransitionNextState<TitleScreenAction>>();
             next_state.0 = match transition_state.as_ref().unwrap().0 {
                 TitleScreenAction::Start => Some(ScreenState::LevelSelect),
@@ -219,6 +223,9 @@ fn handle_title_screen_transition(
         }
     }
 }
+/// Denotes the game screen.
+#[derive(Component)]
+pub struct GameScreen;
 
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
     commands.spawn((
@@ -238,18 +245,78 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
         IsDefaultUiCamera,
     ));
 
+    commands
+        .spawn((
+            GameScreen,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    ..default()
+                },
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            p.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    justify_content: JustifyContent::End,
+                    align_items: AlignItems::Center,
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(16.)),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|p| {
+                p.spawn((
+                    MenuButtonBundle::from_label("BACK"),
+                ));
+            });
+        });
+
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
-fn destroy_game() {}
+fn destroy_game(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<GameScreen>>,
+    cam_query: Query<Entity, With<Camera3d>>,
+) {
+    for e in screen_query.iter() {
+        commands.entity(e).despawn_recursive();
+    }
+    commands.remove_resource::<ShouldRun>();
+    commands.remove_resource::<LevelLayout>();
+    commands.entity(cam_query.single()).despawn_recursive();
+}
+
+fn handle_game_btns(
+    mut ev_btn_pressed: EventReader<MenuButtonPressedEvent>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+) {
+    for _ in ev_btn_pressed.read() {
+        ev_start_fade.send(StartFadeEvent { fade_in: false });
+    }
+}
+
+fn handle_game_transition(
+    mut ev_fade_finished: EventReader<FadeFinishedEvent<ScreenState>>,
+    mut next_state: ResMut<NextState<ScreenState>>,
+) {
+    for ev in ev_fade_finished.read() {
+        if !ev.fade_in && ev.from_state == ScreenState::Game {
+            next_state.0 = Some(ScreenState::LevelSelect);
+        }
+    }
+}
 
 /// Denotes the level select screen.
 #[derive(Component)]
 struct LevelSelectScreen;
-
-/// A button with an image.
-#[derive(Component)]
-struct ImageButton;
 
 #[derive(Component, Clone)]
 enum LevelSelectAction {
@@ -337,7 +404,7 @@ fn init_level_select(
                 .with_children(|p| {
                     p.spawn((
                         LevelSelectAction::Back,
-                        MenuButtonBundle::from_label("Back"),
+                        MenuButtonBundle::from_label("BACK"),
                     ));
                 });
             });
@@ -368,14 +435,13 @@ fn handle_level_select_btns(
 }
 
 fn handle_level_select_transition(
-    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut ev_fade_finished: EventReader<FadeFinishedEvent<ScreenState>>,
     mut commands: Commands,
     transition_state: Option<Res<TransitionNextState<LevelSelectAction>>>,
     mut next_state: ResMut<NextState<ScreenState>>,
-    screen_query: Query<Entity, With<LevelSelectScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
-        if !ev.fade_in && !screen_query.is_empty() {
+        if !ev.fade_in && ev.from_state == ScreenState::LevelSelect {
             commands.remove_resource::<TransitionNextState<LevelSelectAction>>();
             next_state.0 = match &transition_state.as_ref().unwrap().0 {
                 LevelSelectAction::Level(level) => {
@@ -490,7 +556,7 @@ fn init_about(
                     },
                     ..default()
                 }).with_children(|p| {
-                    p.spawn(MenuButtonBundle::from_label("Back"));
+                    p.spawn(MenuButtonBundle::from_label("BACK"));
                 });
             });
         });
@@ -516,12 +582,11 @@ fn handle_about_btns(
 }
 
 fn handle_about_transition(
-    mut ev_fade_finished: EventReader<FadeFinishedEvent>,
+    mut ev_fade_finished: EventReader<FadeFinishedEvent<ScreenState>>,
     mut next_state: ResMut<NextState<ScreenState>>,
-    screen_query: Query<Entity, With<AboutScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
-        if !ev.fade_in && !screen_query.is_empty() {
+        if !ev.fade_in && ev.from_state == ScreenState::About {
             next_state.0 = Some(ScreenState::TitleScreen);
         }
     }
