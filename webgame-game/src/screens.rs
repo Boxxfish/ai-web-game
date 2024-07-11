@@ -29,7 +29,7 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(OnExit(ScreenState::LevelSelect), destroy_level_select)
             .add_systems(
                 Update,
-                (handle_level_select_transition, handle_level_select_btns)
+                (handle_level_select_transition.before(init_level_select), handle_level_select_btns)
                     .run_if(in_state(ScreenState::LevelSelect)),
             )
             .add_systems(OnEnter(ScreenState::Game), init_game)
@@ -38,7 +38,7 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(OnExit(ScreenState::About), destroy_about)
             .add_systems(
                 Update,
-                (handle_about_transition, handle_about_btns).run_if(in_state(ScreenState::About)),
+                (handle_about_transition.before(init_about), handle_about_btns).run_if(in_state(ScreenState::About)),
             );
     }
 }
@@ -247,11 +247,9 @@ fn destroy_game() {}
 #[derive(Component)]
 struct LevelSelectScreen;
 
-/// A button that loads a level.
+/// A button with an image.
 #[derive(Component)]
-struct LevelSelectButton {
-    pub level: String,
-}
+struct ImageButton;
 
 #[derive(Component, Clone)]
 enum LevelSelectAction {
@@ -310,22 +308,20 @@ fn init_level_select(
                 p.spawn(NodeBundle {
                     style: Style {
                         display: Display::Flex,
-                        flex_direction: FlexDirection::Column,
+                        flex_direction: FlexDirection::Row,
                         column_gap: Val::Px(16.),
                         row_gap: Val::Px(16.),
-                        margin: UiRect::axes(Val::Auto, Val::Px(8.)),
+                        margin: UiRect::axes(Val::Auto, Val::Px(32.)),
                         ..default()
                     },
                     ..default()
                 })
                 .with_children(|p| {
-                    for level in ["test.json", "test.json", "test.json"] {
-                        // let image = asset_server.load(format!("ui/level_images/{level}.png"));
+                    for level in ["test", "test", "test"] {
+                        let image = asset_server.load(format!("ui/level_select/{level}.png"));
                         p.spawn((
-                            LevelSelectButton {
-                                level: format!("levels/{level}.json"),
-                            },
-                            MenuButtonBundle::from_label(level),
+                            MenuButtonBundle::from_image(image),
+                            LevelSelectAction::Level(format!("levels/{level}.json")),
                         ));
                     }
                 });
@@ -339,7 +335,10 @@ fn init_level_select(
                     ..default()
                 })
                 .with_children(|p| {
-                    p.spawn(MenuButtonBundle::from_label("Back"));
+                    p.spawn((
+                        LevelSelectAction::Back,
+                        MenuButtonBundle::from_label("Back"),
+                    ));
                 });
             });
         });
@@ -373,7 +372,7 @@ fn handle_level_select_transition(
     mut commands: Commands,
     transition_state: Option<Res<TransitionNextState<LevelSelectAction>>>,
     mut next_state: ResMut<NextState<ScreenState>>,
-    screen_query: Query<Entity, With<TitleScreen>>,
+    screen_query: Query<Entity, With<LevelSelectScreen>>,
 ) {
     for ev in ev_fade_finished.read() {
         if !ev.fade_in && !screen_query.is_empty() {

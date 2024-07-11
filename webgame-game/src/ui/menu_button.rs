@@ -18,13 +18,24 @@ impl Plugin for MenuButtonPlugin {
     }
 }
 
+pub enum MenuButtonContent {
+    Label(String),
+    Image(Handle<Image>),
+}
+
+impl Default for MenuButtonContent {
+    fn default() -> Self {
+        Self::Label("".into())
+    }
+}
+
 /// A standard menu button.
 #[derive(Default, Component)]
 pub struct MenuButton {
-    /// The text on the button.
+    /// The text or image on the button.
     ///
-    /// For consistency, if you want to change the label on the button, modify this instead of the underlying child.
-    pub label: String,
+    /// For consistency, if you want to change the content on the button, modify this instead of the underlying child.
+    pub content: MenuButtonContent,
     hover_start: Duration,
 }
 
@@ -38,14 +49,12 @@ pub struct MenuButtonBundle {
 impl Default for MenuButtonBundle {
     fn default() -> Self {
         Self {
-            menu_button: MenuButton {
-                label: "MenuButton".into(),
-                hover_start: default(),
-            },
+            menu_button: MenuButton::default(),
             button: ButtonBundle {
                 style: Style {
                     display: Display::Flex,
-                    width: Val::Percent(100.),
+                    width: Val::Px(128.),
+                    max_height: Val::Px(128.),
                     padding: UiRect::axes(Val::Auto, Val::Px(4.)),
                     border: UiRect::all(Val::Px(1.)),
                     flex_direction: FlexDirection::Column,
@@ -60,10 +69,20 @@ impl Default for MenuButtonBundle {
 }
 
 impl MenuButtonBundle {
-    pub fn from_label(label: &str) -> MenuButtonBundle {
-        MenuButtonBundle {
+    pub fn from_label(label: &str) -> Self {
+        Self {
             menu_button: MenuButton {
-                label: label.into(),
+                content: MenuButtonContent::Label(label.into()),
+                ..default()
+            },
+            ..default()
+        }
+    }
+
+    pub fn from_image(image: Handle<Image>) -> Self {
+        Self {
+            menu_button: MenuButton {
+                content: MenuButtonContent::Image(image),
                 ..default()
             },
             ..default()
@@ -79,28 +98,53 @@ fn construct_menu_btns(
 ) {
     let font = asset_server.load("fonts/montserrat/Montserrat-Regular.ttf");
     for (e, btn) in btn_query.iter() {
-        commands.entity(e).with_children(|p| {
-            p.spawn(TextBundle::from_section(
-                btn.label.clone(),
-                TextStyle {
-                    font: font.clone(),
-                    font_size: 22.,
-                    color: Color::WHITE,
-                },
-            ));
+        commands.entity(e).with_children(|p| match &btn.content {
+            MenuButtonContent::Label(label) => {
+                p.spawn(TextBundle::from_section(
+                    label.clone(),
+                    TextStyle {
+                        font: font.clone(),
+                        font_size: 22.,
+                        color: Color::WHITE,
+                    },
+                ));
+            }
+            MenuButtonContent::Image(image) => {
+                p.spawn(ImageBundle {
+                    style: Style {
+                        width: Val::Px(128.),
+                        height: Val::Px(128.),
+                        ..default()
+                    },
+                    image: UiImage::new(image.clone()),
+                    z_index: ZIndex::Local(1),
+                    ..default()
+                });
+            }
         });
     }
 }
 
-/// Updates button labels when they change.
+/// Updates button content when it changes.
 pub fn update_labels(
     btn_query: Query<(Entity, &MenuButton, &Children), Changed<MenuButton>>,
     mut text_query: Query<&mut Text>,
+    image_query: Query<Entity, With<Handle<Image>>>,
+    mut commands: Commands,
 ) {
     for (e, btn, children) in btn_query.iter() {
         for child in children.iter() {
-            if let Ok(mut text) = text_query.get_mut(*child) {
-                text.sections[0].value = btn.label.clone();
+            match &btn.content {
+                MenuButtonContent::Label(label) => {
+                    if let Ok(mut text) = text_query.get_mut(*child) {
+                        text.sections[0].value = label.clone();
+                    }
+                }
+                MenuButtonContent::Image(image) => {
+                    if image_query.contains(*child) {
+                        commands.entity(*child).insert(image.clone());
+                    }
+                }
             }
         }
     }
