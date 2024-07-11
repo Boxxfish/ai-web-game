@@ -21,7 +21,7 @@ use crate::{
     net::NNWrapper,
     observer::{DebugObserver, Observable, Observer, Wall},
     screens::GameScreen,
-    world_objs::{NoiseSource, VisualMarker},
+    world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -46,8 +46,6 @@ impl Plugin for GridworldPlayPlugin {
 
 /// The width and height of the level by default.
 pub const DEFAULT_LEVEL_SIZE: usize = 8;
-/// The probability of a door spawning in an empty cell.
-pub const DOOR_PROB: f64 = 0.05;
 
 pub const GRID_CELL_SIZE: f32 = 25.;
 
@@ -68,6 +66,8 @@ pub struct LoadedLevelData {
     pub size: usize,
     pub walls: Vec<u8>,
     pub objects: Vec<LoadedObjData>,
+    pub key_pos: (usize, usize),
+    pub door_pos: (usize, usize),
 }
 
 /// Indicates that a level should be loaded.
@@ -136,6 +136,8 @@ fn load_level(
                         walls,
                         size: level.size,
                         objects: level.objects.clone(),
+                        key_pos: Some(level.key_pos),
+                        door_pos: Some(level.door_pos),
                     });
                     commands.remove_resource::<LevelLoader>();
                 }
@@ -155,6 +157,8 @@ pub struct LevelLayout {
     pub walls: Vec<bool>,
     pub size: usize,
     pub objects: Vec<LoadedObjData>,
+    pub key_pos: Option<(usize, usize)>,
+    pub door_pos: Option<(usize, usize)>,
 }
 
 impl LevelLayout {
@@ -167,6 +171,8 @@ impl LevelLayout {
                 .collect(),
             size,
             objects: Vec::new(),
+            key_pos: None,
+            door_pos: None,
         };
         let mut objects = Vec::new();
         if max_items > 0 {
@@ -186,6 +192,8 @@ impl LevelLayout {
             walls: orig.walls,
             size,
             objects,
+            key_pos: None,
+            door_pos: None,
         }
     }
 
@@ -317,7 +325,6 @@ fn setup_entities(
                 unlit: true,
                 ..default()
             });
-            let mut rng = rand::thread_rng();
             for y in 0..level.size {
                 for x in 0..level.size {
                     if level.walls[y * level.size + x] {
@@ -378,14 +385,6 @@ fn setup_entities(
                                 ..default()
                             });
                         });
-                    } else if rng.gen_bool(DOOR_PROB) {
-                        // p.spawn((
-                        //     Door::default(),
-                        //     Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
-                        //     TransformBundle::from_transform(Transform::from_translation(
-                        //         Vec3::new(x as f32, y as f32, 0.) * GRID_CELL_SIZE,
-                        //     )),
-                        // ));
                     }
                 }
             }
@@ -408,24 +407,24 @@ fn setup_entities(
                 ))
                 .with_children(|p| {
                     if is_playable.is_some() {
-                        let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
-                        let base_xform = Transform::default()
-                            .with_translation(-Vec3::X * GRID_CELL_SIZE * level.size as f32 / 2.)
-                            .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
-                            .with_scale(Vec3::new(level.size as f32, 1., 1.) * GRID_CELL_SIZE);
-                        let rot = if i >= 2 {
-                            Quat::IDENTITY
-                        } else {
-                            Quat::from_rotation_z(std::f32::consts::PI / 2.)
-                        };
-                        p.spawn(SceneBundle {
-                            scene: asset_server.load("furniture/wall.glb#Scene0"),
-                            transform: Transform::default()
-                                .with_rotation(rot)
-                                .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
-                                * base_xform,
-                            ..default()
-                        });
+                        // let offsets = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y];
+                        // let base_xform = Transform::default()
+                        //     .with_translation(-Vec3::X * GRID_CELL_SIZE * level.size as f32 / 2.)
+                        //     .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
+                        //     .with_scale(Vec3::new(level.size as f32, 1., 1.) * GRID_CELL_SIZE);
+                        // let rot = if i >= 2 {
+                        //     Quat::IDENTITY
+                        // } else {
+                        //     Quat::from_rotation_z(std::f32::consts::PI / 2.)
+                        // };
+                        // p.spawn(SceneBundle {
+                        //     scene: asset_server.load("furniture/wall.glb#Scene0"),
+                        //     transform: Transform::default()
+                        //         .with_rotation(rot)
+                        //         .with_translation(offsets[i] * GRID_CELL_SIZE / 2.)
+                        //         * base_xform,
+                        //     ..default()
+                        // });
                     } else {
                         p.spawn(PbrBundle {
                             mesh: meshes.add(Cuboid::new(
@@ -501,6 +500,58 @@ fn setup_entities(
                             ..default()
                         });
                     }
+                });
+            }
+
+            // Add keys and doors
+            if let Some((x, y)) = level.key_pos {
+                let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
+                let mut child_builder = p.spawn((
+                    Key,
+                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 4.))),
+                    VisibilityBundle::default(),
+                ));
+                child_builder.with_children(|p| {
+                    p.spawn(SceneBundle {
+                        scene: asset_server.load("key.glb#Scene0"),
+                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        ..default()
+                    });
+                });
+            }
+            if let Some((x, y)) = level.door_pos {
+                let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
+                let collider_size = GRID_CELL_SIZE;
+                let angle = if y == level.size - 1 {
+                    0.
+                }
+                else if x == level.size - 1 {
+                    PI / 2.
+                }
+                else if y == 0 {
+                    PI
+                }
+                else {
+                    PI * 3. / 2.
+                };
+                let mut child_builder = p.spawn((
+                    Door::default(),
+                    Wall,
+                    Collider::cuboid(collider_size / 2., collider_size / 2.),
+                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 2.) * Quat::from_rotation_y(angle))),
+                    VisibilityBundle::default(),
+                ));
+                child_builder.with_children(|p| {
+                    p.spawn(SceneBundle {
+                        scene: asset_server.load("furniture/wallDoorway.glb#Scene0"),
+                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        ..default()
+                    });
+                    p.spawn((DoorVisual, SceneBundle {
+                        scene: asset_server.load("furniture/doorway.glb#Scene0"),
+                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        ..default()
+                    }));
                 });
             }
         });
