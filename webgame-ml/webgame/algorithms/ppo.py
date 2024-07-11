@@ -93,6 +93,7 @@ def train_ppo(
             if (i + 1) % gradient_steps == 0:
                 torch.nn.utils.clip_grad.clip_grad_norm_(p_net.parameters(), gradient_clip)
                 p_opt.step()
+                torch.nn.utils.clip_grad.clip_grad_norm_(v_net.parameters(), gradient_clip)
                 v_opt.step()
                 p_opt.zero_grad()
                 v_opt.zero_grad()
