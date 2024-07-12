@@ -1,5 +1,5 @@
 use crate::{
-    agents::{Agent, NextAction},
+    agents::{Agent, NextAction, PlayerAgent},
     gridworld::GRID_CELL_SIZE,
     observer::Wall,
 };
@@ -14,8 +14,7 @@ impl Plugin for WorldObjPlugin {
         app.add_systems(
             Update,
             (
-                update_door,
-                visualize_door,
+                handle_key_touch,
                 update_noise_src,
                 // visualize_noise_src,
                 // visualize_visual_marker,
@@ -24,70 +23,46 @@ impl Plugin for WorldObjPlugin {
     }
 }
 
+/// A key for unlocking doors.
+#[derive(Component)]
+pub struct Key;
+
 /// A door that can be opened and closed.
 #[derive(Component, Default)]
 pub struct Door {
     pub open: bool,
 }
 
-/// How close an object needs to be before the agent can toggle it.
-const TOGGLE_DIST: f32 = GRID_CELL_SIZE * 1.5;
+/// A visual indicating the door iteself.
+#[derive(Component)]
+pub struct DoorVisual;
 
-/// Opens and closes the door if the agent is not touching the door and it toggles nearby objects.
-fn update_door(
+/// How close the agent needs to be before it can pick up a key.
+const PICKUP_DIST: f32 = GRID_CELL_SIZE / 2.;
+
+/// Opens the door and destroys the key if the player touches it.
+fn handle_key_touch(
+    player_query: Query<&GlobalTransform, With<PlayerAgent>>,
+    key_query: Query<(Entity, &GlobalTransform), With<Key>>,
+    mut door_query: Query<(Entity, &mut Door)>,
+    door_vis_query: Query<Entity, With<DoorVisual>>,
     mut commands: Commands,
-    agent_query: Query<(&GlobalTransform, &NextAction)>,
-    mut door_query: Query<(Entity, &GlobalTransform, &mut Door)>,
 ) {
-    for (agent_xform, action) in agent_query.iter() {
-        let agent_pos = agent_xform.translation().xy();
-        if action.toggle_objs {
-            for (e, obj_xform, mut door) in door_query.iter_mut() {
-                let obj_pos = obj_xform.translation().xy();
-                let dist_sq = (obj_pos - agent_pos).length_squared();
-                if dist_sq >= (GRID_CELL_SIZE / 2.).powi(2) && dist_sq < TOGGLE_DIST.powi(2) {
+    for player_xform in player_query.iter() {
+        let player_pos = player_xform.translation().xy();
+        for (key_e, key_xform) in key_query.iter() {
+            let obj_pos = key_xform.translation().xy();
+            let dist_sq = (obj_pos - player_pos).length_squared();
+            if dist_sq < PICKUP_DIST.powi(2) {
+                commands.entity(key_e).despawn_recursive();
+                for (door_e, mut door) in door_query.iter_mut() {
                     door.open = !door.open;
-                    if door.open {
-                        commands.entity(e).remove::<(Wall, Collider)>();
-                    } else {
-                        commands.entity(e).insert((
-                            Wall,
-                            Collider::cuboid(GRID_CELL_SIZE / 2., GRID_CELL_SIZE / 2.),
-                        ));
-                    }
+                    commands.entity(door_e).remove::<(Wall, Collider)>();
+                }
+                for vis_e in door_vis_query.iter() {
+                    commands.entity(vis_e).despawn_recursive();
                 }
             }
-        }
-    }
-}
-
-/// Updates the door visual.
-fn visualize_door(
-    mut commands: Commands,
-    mut door_query: Query<(Entity, &Door, Option<&Handle<ColorMaterial>>), Changed<Door>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    for (e, door, mat_handle) in door_query.iter_mut() {
-        if door.open {
-            materials
-                .get_mut(mat_handle.unwrap())
-                .unwrap()
-                .color
-                .set_a(0.5);
-            commands.entity(e).remove::<Wall>();
-        } else if let Some(mat_handle) = mat_handle {
-            materials.get_mut(mat_handle).unwrap().color.set_a(1.0);
-            commands.entity(e).insert(Wall);
-        } else {
-            commands.entity(e).insert((
-                Mesh2dHandle(meshes.add(Rectangle::new(GRID_CELL_SIZE, GRID_CELL_SIZE))),
-                materials.add(Color::MAROON),
-                Visibility::Visible,
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-            ));
-            commands.entity(e).insert(Wall);
         }
     }
 }

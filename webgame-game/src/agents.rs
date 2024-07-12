@@ -89,19 +89,21 @@ fn update_observations(
     listening_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
 ) {
     for mut pursuer in pursuer_query.iter_mut() {
-        pursuer.obs_timer.tick(time.delta());
-        if pursuer.obs_timer.just_finished() {
-            // Encode observations
-            let (grid, _, _) = encode_obs(
-                &observable_query,
-                &noise_query,
-                player_query.single(),
-                &level,
-                &p_query,
-                &listening_query,
-            )
-            .unwrap();
-            pursuer.observations = Some((grid, None, None));
+        if let Ok(player_e) = player_query.get_single() {
+            pursuer.obs_timer.tick(time.delta());
+            if pursuer.obs_timer.just_finished() {
+                // Encode observations
+                let (grid, _, _) = encode_obs(
+                    &observable_query,
+                    &noise_query,
+                    player_e,
+                    &level,
+                    &p_query,
+                    &listening_query,
+                )
+                .unwrap();
+                pursuer.observations = Some((grid, None, None));
+            }
         }
     }
 }
@@ -168,11 +170,12 @@ fn set_player_action(
     if inpt.pressed(KeyCode::KeyD) {
         dir.x += 1.;
     }
-    let mut next_action = player_query.single_mut();
-    next_action.dir = dir;
-    next_action.toggle_objs = false;
-    if inpt.just_pressed(KeyCode::KeyF) {
-        next_action.toggle_objs = true;
+    if let Ok(mut next_action) = player_query.get_single_mut() {
+        next_action.dir = dir;
+        next_action.toggle_objs = false;
+        if inpt.just_pressed(KeyCode::KeyF) {
+            next_action.toggle_objs = true;
+        }
     }
 }
 

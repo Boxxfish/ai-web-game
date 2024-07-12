@@ -54,7 +54,7 @@ class Config:
     eval_every: int = 2  # How many iterations before evaluating.
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     entropy_coeff: float = 0.001  # Entropy bonus applied.
-    gradient_clip: float = 0.1  # Gradient clipping for policy.
+    gradient_clip: float = 0.1  # Gradient clipping for networks.
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )

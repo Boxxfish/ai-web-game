@@ -4,7 +4,7 @@ use bevy::{
 };
 
 use crate::{
-    gridworld::{LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
+    gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     ui::{
         menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
@@ -36,7 +36,8 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(OnExit(ScreenState::Game), destroy_game)
             .add_systems(
                 Update,
-                (handle_game_transition, handle_game_btns).run_if(in_state(ScreenState::Game)),
+                (handle_game_transition, handle_game_btns, handle_game_end)
+                    .run_if(in_state(ScreenState::Game)),
             )
             .add_systems(OnEnter(ScreenState::About), init_about)
             .add_systems(OnExit(ScreenState::About), destroy_about)
@@ -227,6 +228,11 @@ fn handle_title_screen_transition(
 #[derive(Component)]
 pub struct GameScreen;
 
+enum GameAction {
+    LevelSelect,
+    Restart,
+}
+
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
     commands.spawn((
         Camera3dBundle {
@@ -272,9 +278,7 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
                 ..default()
             })
             .with_children(|p| {
-                p.spawn((
-                    MenuButtonBundle::from_label("BACK"),
-                ));
+                p.spawn((MenuButtonBundle::from_label("BACK"),));
             });
         });
 
@@ -297,19 +301,86 @@ fn destroy_game(
 fn handle_game_btns(
     mut ev_btn_pressed: EventReader<MenuButtonPressedEvent>,
     mut ev_start_fade: EventWriter<StartFadeEvent>,
+    mut commands: Commands,
 ) {
     for _ in ev_btn_pressed.read() {
+        commands.insert_resource(TransitionNextState(GameAction::LevelSelect));
+        ev_start_fade.send(StartFadeEvent { fade_in: false });
+    }
+}
+
+fn handle_game_end(
+    mut ev_game_end: EventReader<GameEndEvent>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
+    mut commands: Commands,
+) {
+    for ev in ev_game_end.read() {
+        let state = if ev.player_won {
+            GameAction::LevelSelect
+        } else {
+            GameAction::Restart
+        };
+        commands.insert_resource(TransitionNextState(state));
         ev_start_fade.send(StartFadeEvent { fade_in: false });
     }
 }
 
 fn handle_game_transition(
+    transition_state: Option<Res<TransitionNextState<GameAction>>>,
     mut ev_fade_finished: EventReader<FadeFinishedEvent<ScreenState>>,
     mut next_state: ResMut<NextState<ScreenState>>,
+    mut commands: Commands,
+    level: Option<Res<LevelLayout>>,
+    screen_query: Query<Entity, With<GameScreen>>,
+    mut ev_start_fade: EventWriter<StartFadeEvent>,
 ) {
     for ev in ev_fade_finished.read() {
         if !ev.fade_in && ev.from_state == ScreenState::Game {
-            next_state.0 = Some(ScreenState::LevelSelect);
+            commands.remove_resource::<TransitionNextState<GameAction>>();
+            next_state.0 = match &transition_state.as_ref().unwrap().0 {
+                GameAction::LevelSelect => Some(ScreenState::LevelSelect),
+                GameAction::Restart => {
+                    for e in screen_query.iter() {
+                        commands.entity(e).despawn_recursive();
+                    }
+                    let level_: LevelLayout = level.as_ref().unwrap().as_ref().clone();
+                    commands.remove_resource::<LevelLayout>();
+                    commands.insert_resource(level_);
+                    commands
+                        .spawn((
+                            GameScreen,
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Percent(100.),
+                                    height: Val::Percent(100.),
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                        ))
+                        .with_children(|p| {
+                            p.spawn(NodeBundle {
+                                style: Style {
+                                    width: Val::Percent(100.),
+                                    height: Val::Percent(100.),
+                                    justify_content: JustifyContent::End,
+                                    align_items: AlignItems::Center,
+                                    display: Display::Flex,
+                                    flex_direction: FlexDirection::Column,
+                                    padding: UiRect::all(Val::Px(16.)),
+                                    ..default()
+                                },
+                                ..default()
+                            })
+                            .with_children(|p| {
+                                p.spawn((MenuButtonBundle::from_label("BACK"),));
+                            });
+                        });
+
+                    ev_start_fade.send(StartFadeEvent { fade_in: true });
+                    Some(ScreenState::Game)
+                }
+            }
         }
     }
 }
