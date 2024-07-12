@@ -40,7 +40,14 @@ impl Plugin for GridworldPlayPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<LoadedLevelData>()
             .init_asset_loader::<LoadedLevelDataLoader>()
-            .add_systems(Update, load_level);
+            .add_event::<GameEndEvent>()
+            .add_systems(
+                Update,
+                (
+                    load_level,
+                    (player_reached_door, pursuer_sees_player).run_if(resource_exists::<ShouldRun>),
+                ),
+            );
     }
 }
 
@@ -151,7 +158,7 @@ fn load_level(
 pub struct ShouldRun;
 
 /// Stores the layout of the level.
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct LevelLayout {
     /// Stores `true` if a wall exists, `false` for empty spaces. The first element is the top right corner.
     pub walls: Vec<bool>,
@@ -508,7 +515,10 @@ fn setup_entities(
                 let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
                 let mut child_builder = p.spawn((
                     Key,
-                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 4.))),
+                    TransformBundle::from_transform(
+                        Transform::from_translation(pos)
+                            .with_rotation(Quat::from_rotation_x(PI / 4.)),
+                    ),
                     VisibilityBundle::default(),
                 ));
                 child_builder.with_children(|p| {
@@ -524,21 +534,22 @@ fn setup_entities(
                 let collider_size = GRID_CELL_SIZE;
                 let angle = if y == level.size - 1 {
                     0.
-                }
-                else if x == level.size - 1 {
+                } else if x == level.size - 1 {
                     PI / 2.
-                }
-                else if y == 0 {
+                } else if y == 0 {
                     PI
-                }
-                else {
+                } else {
                     PI * 3. / 2.
                 };
                 let mut child_builder = p.spawn((
                     Door::default(),
                     Wall,
                     Collider::cuboid(collider_size / 2., collider_size / 2.),
-                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 2.) * Quat::from_rotation_y(angle))),
+                    TransformBundle::from_transform(
+                        Transform::from_translation(pos).with_rotation(
+                            Quat::from_rotation_x(PI / 2.) * Quat::from_rotation_y(angle),
+                        ),
+                    ),
                     VisibilityBundle::default(),
                 ));
                 child_builder.with_children(|p| {
@@ -547,15 +558,71 @@ fn setup_entities(
                         transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
                         ..default()
                     });
-                    p.spawn((DoorVisual, SceneBundle {
-                        scene: asset_server.load("furniture/doorway.glb#Scene0"),
-                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
-                        ..default()
-                    }));
+                    p.spawn((
+                        DoorVisual,
+                        SceneBundle {
+                            scene: asset_server.load("furniture/doorway.glb#Scene0"),
+                            transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                            ..default()
+                        },
+                    ));
                 });
             }
         });
 
     // Indicate we should start the game
     commands.insert_resource(ShouldRun);
+}
+
+/// Sent when the player wins or loses.
+#[derive(Event)]
+pub struct GameEndEvent {
+    pub player_won: bool,
+}
+
+/// If the player has reached the door, win the game.
+fn player_reached_door(
+    mut ev_game_end: EventWriter<GameEndEvent>,
+    level: Option<Res<LevelLayout>>,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
+    mut commands: Commands,
+) {
+    if let Some(level) = level {
+        if let Some(door_pos) = level.door_pos {
+            if let Ok((player_e, player_xform)) = player_query.get_single() {
+                let player_pos = player_xform.translation().xy() / GRID_CELL_SIZE;
+                let player_pos = (
+                    player_pos.x.round() as usize,
+                    level.size - player_pos.y.round() as usize - 1,
+                );
+                if door_pos == player_pos {
+                    commands.remove_resource::<ShouldRun>();
+                    commands.entity(player_e).despawn_recursive();
+                    ev_game_end.send(GameEndEvent { player_won: true });
+                }
+            }
+        }
+    }
+}
+
+/// If the pursuer can see the player and they are within 2 cells of each other, end the game.
+fn pursuer_sees_player(
+    mut ev_game_end: EventWriter<GameEndEvent>,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
+    pursuer_query: Query<(&Observer, &GlobalTransform), With<PursuerAgent>>,
+    mut commands: Commands,
+) {
+    if let Ok((player_e, player_xform)) = player_query.get_single() {
+        if let Ok((pursuer_obs, pursuer_xform)) = pursuer_query.get_single() {
+            let player_pos = player_xform.translation().xy();
+            let pursuer_pos = pursuer_xform.translation().xy();
+            if pursuer_obs.observing.contains(&player_e)
+                && (player_pos - pursuer_pos).length_squared() < (2. * GRID_CELL_SIZE).powi(2)
+            {
+                commands.remove_resource::<ShouldRun>();
+                commands.entity(player_e).despawn_recursive();
+                ev_game_end.send(GameEndEvent { player_won: false });
+            }
+        }
+    }
 }
