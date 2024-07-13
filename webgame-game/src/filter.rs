@@ -13,6 +13,7 @@ use crate::{
     gridworld::{LevelLayout, GRID_CELL_SIZE},
     models::MeasureModel,
     net::{load_weights_into_net, NNWrapper},
+    screens::GameScreen,
 };
 
 /// Plugin for Bayes filtering functionality.
@@ -30,9 +31,11 @@ impl Plugin for FilterPlayPlugin {
         app.add_systems(Startup, init_filter_net).add_systems(
             Update,
             (
-                (init_probs_viewer, update_filter).run_if(resource_exists::<LevelLayout>),
+                init_probs_viewer.run_if(resource_added::<LevelLayout>),
+                update_filter.run_if(resource_exists::<LevelLayout>),
                 update_probs_viewers,
                 load_weights_into_net::<MeasureModel>,
+                toggle_viewers,
             ),
         );
     }
@@ -42,6 +45,7 @@ impl Plugin for FilterPlayPlugin {
 #[derive(Component)]
 pub struct BayesFilter {
     pub probs: Tensor,
+    pub size: usize,
 }
 
 impl BayesFilter {
@@ -49,7 +53,13 @@ impl BayesFilter {
         let probs = (Tensor::ones(&[size, size], DType::F32, &Device::Cpu).unwrap()
             / (size * size) as f64)
             .unwrap();
-        Self { probs }
+        Self { probs, size }
+    }
+
+    pub fn reset(&mut self) {
+        self.probs = (Tensor::ones(&[self.size, self.size], DType::F32, &Device::Cpu).unwrap()
+            / (self.size * self.size) as f64)
+            .unwrap();
     }
 }
 
@@ -136,7 +146,7 @@ fn init_probs_viewer(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
-    filter_query: Query<(Entity, &BayesFilter), Added<BayesFilter>>,
+    filter_query: Query<(Entity, &BayesFilter)>,
     level: Res<LevelLayout>,
 ) {
     for (e, filter) in filter_query.iter() {
@@ -157,6 +167,7 @@ fn init_probs_viewer(
         img.sampler = ImageSampler::nearest();
         let img = images.add(img);
         commands.spawn((
+            GameScreen,
             ProbsViewer { filter_e: e },
             PbrBundle {
                 mesh: meshes.add(Rectangle::new(
@@ -165,7 +176,9 @@ fn init_probs_viewer(
                 )),
                 material: materials.add(StandardMaterial {
                     base_color_texture: Some(img),
+                    base_color: Color::WHITE.with_a(0.8),
                     unlit: true,
+                    alpha_mode: AlphaMode::Blend,
                     cull_mode: None,
                     ..default()
                 }),
@@ -176,6 +189,7 @@ fn init_probs_viewer(
                         1.5,
                     ))
                     .with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
+                    visibility: Visibility::Hidden,
                 ..default()
             },
         ));
@@ -207,6 +221,21 @@ fn update_probs_viewers(
             if let Some(image) = images.get_mut(material.base_color_texture.as_ref().unwrap()) {
                 image.data = data;
                 material.base_color_texture = material.base_color_texture.clone();
+            }
+        }
+    }
+}
+
+/// Toggles viewers.
+fn toggle_viewers(
+    inpt: Res<ButtonInput<KeyCode>>,
+    mut viewer_query: Query<&mut Visibility, With<ProbsViewer>>,
+) {
+    if inpt.just_pressed(KeyCode::Space) {
+        for mut vis in viewer_query.iter_mut() {
+            *vis = match vis.as_ref() {
+                Visibility::Inherited | Visibility::Visible => Visibility::Hidden,
+                Visibility::Hidden => Visibility::Visible,
             }
         }
     }

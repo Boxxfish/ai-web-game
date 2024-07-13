@@ -15,13 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
-    configs::IsPlayable,
-    models::PolicyNet,
-    net::NNWrapper,
-    observer::{DebugObserver, Observable, Observer, Wall},
-    screens::GameScreen,
-    world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
+    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent}, configs::IsPlayable, filter::BayesFilter, models::PolicyNet, net::NNWrapper, observer::{DebugObserver, Observable, Observer, Wall}, screens::GameScreen, world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker}
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -227,7 +221,12 @@ fn setup_entities(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     is_playable: Option<Res<IsPlayable>>,
+    mut filter_query: Query<&mut BayesFilter>,
 ) {
+    for mut filter in filter_query.iter_mut() {
+        filter.reset();
+    }
+
     commands
         .spawn((
             GameScreen,
