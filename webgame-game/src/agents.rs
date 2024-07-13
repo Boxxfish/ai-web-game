@@ -247,30 +247,32 @@ pub fn move_agents(
     for (agent_e, mut agent, mut controller, next_action, children) in agent_query.iter_mut() {
         let dir = next_action.dir;
         let anim_e = get_entity(&agent_e, &["", "", "Root"], &child_query);
-        if dir.length_squared() > 0.1 {
-            let dir = dir.normalize();
-            agent.dir = dir;
-            controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
-            for child in children.iter() {
-                if let Ok(mut xform) = vis_query.get_mut(*child) {
-                    xform.look_to(-dir.extend(0.), Vec3::Z);
-                    if let Ok(mut anim) = anim_query.get_mut(anim_e.unwrap()) {
-                        anim.play_with_transition(
-                            asset_server.load("characters/cyborgFemaleA.glb#Animation1"),
-                            Duration::from_secs_f32(0.2),
-                        )
-                        .repeat();
-                    }
-                    break;
-                }
-            }
-        } else if let Some(anim_e) = anim_e {
+        if let Some(anim_e) = anim_e {
             if let Ok(mut anim) = anim_query.get_mut(anim_e) {
-                anim.play_with_transition(
-                    asset_server.load("characters/cyborgFemaleA.glb#Animation0"),
-                    Duration::from_secs_f32(0.2),
-                )
-                .repeat();
+                if dir.length_squared() > 0.1 {
+                    let dir = dir.normalize();
+                    agent.dir = dir;
+                    controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+                    for child in children.iter() {
+                        if let Ok(mut xform) = vis_query.get_mut(*child) {
+                            xform.look_to(-dir.extend(0.), Vec3::Z);
+                            {
+                                anim.play_with_transition(
+                                    asset_server.load("characters/cyborgFemaleA.glb#Animation1"),
+                                    Duration::from_secs_f32(0.2),
+                                )
+                                .repeat();
+                            }
+                            break;
+                        }
+                    }
+                } else {
+                    anim.play_with_transition(
+                        asset_server.load("characters/cyborgFemaleA.glb#Animation0"),
+                        Duration::from_secs_f32(0.2),
+                    )
+                    .repeat();
+                }
             }
         }
     }
