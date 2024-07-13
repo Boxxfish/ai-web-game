@@ -1,13 +1,10 @@
-use bevy::{
-    prelude::*,
-    ui::{UiBatch, UiImageBindGroups},
-};
+use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
     gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     ui::{
         input_prompt::{InputPrompt, InputPromptBundle, InputType},
-        menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
+        menu_button::{MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
     },
 };
@@ -17,8 +14,11 @@ pub struct ScreensPlayPlugin;
 
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(ScreenState::TitleScreen)
+        app.insert_state(ScreenState::Loading)
             .add_systems(Startup, init_ui)
+            .add_systems(OnEnter(ScreenState::Loading), init_loading)
+            .add_systems(OnExit(ScreenState::Loading), destroy_loading)
+            .add_systems(Update, check_assets_loaded.run_if(in_state(ScreenState::Loading)))
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
             .add_systems(
@@ -53,10 +53,102 @@ impl Plugin for ScreensPlayPlugin {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, States, Default)]
 pub enum ScreenState {
     #[default]
+    Loading,
     TitleScreen,
     LevelSelect,
     Game,
     About,
+}
+
+const FONT_REGULAR: &str = "fonts/montserrat/Montserrat-Regular.ttf";
+const FONT_BOLD: &str = "fonts/montserrat/Montserrat-Bold.ttf";
+
+/// Denotes the loading screen.
+#[derive(Component)]
+struct LoadingScreen;
+
+/// A list of assets to load before the game runs.
+const ASSETS_TO_LOAD: &[&str] = &[
+    "furniture/wall.glb",
+    "furniture/wallDoorway.glb",
+    "furniture/doorway.glb",
+    "furniture/floorFull.glb",
+];
+
+/// Handles toa ssets that must be loaded before the game runs.
+#[derive(Resource)]
+struct LoadingAssets {
+    pub handles: Vec<UntypedHandle>,
+}
+
+fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load(FONT_REGULAR);
+    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    commands
+        .spawn((
+            LoadingScreen,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::End,
+                    justify_content: JustifyContent::End,
+                    padding: UiRect::all(Val::Px(16.)),
+                    ..default()
+                },
+                background_color: Color::BLACK.into(),
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            p.spawn(TextBundle::from_section(
+                "Loading...",
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 22.,
+                    color: Color::WHITE,
+                },
+            ));
+        });
+
+    let mut handles = Vec::new();
+    for path in ASSETS_TO_LOAD {
+        handles.push(asset_server.load::<Scene>(*path).untyped())
+    }
+    commands.insert_resource(LoadingAssets { handles });
+}
+
+/// Checks if assets are loaded, and transition to title screen if so.
+fn check_assets_loaded(
+    loading_assets: Option<Res<LoadingAssets>>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<ScreenState>>,
+) {
+    if let Some(loading_assets) = loading_assets {
+        for handle in &loading_assets.handles {
+            let load_state = asset_server.recursive_dependency_load_state(handle);
+            match load_state {
+                RecursiveDependencyLoadState::Loading | RecursiveDependencyLoadState::NotLoaded => {
+                    return
+                }
+                _ => (),
+            }
+        }
+        commands.remove_resource::<LoadingAssets>();
+        next_state.0 = Some(ScreenState::TitleScreen);
+    }
+}
+
+fn destroy_loading(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<LoadingScreen>>,
+    cam_query: Query<Entity, With<Camera2d>>,
+) {
+    commands.entity(screen_query.single()).despawn_recursive();
+    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 /// Denotes the title screen.
@@ -84,7 +176,7 @@ fn init_title_screen(
     asset_server: Res<AssetServer>,
     mut ev_start_fade: EventWriter<StartFadeEvent>,
 ) {
-    let font_bold = asset_server.load("fonts/montserrat/Montserrat-Bold.ttf");
+    let font_bold = asset_server.load(FONT_BOLD);
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 
     commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
@@ -598,7 +690,7 @@ fn init_about(
                     z_index: ZIndex::Local(1),
                     ..default()
                 }).with_children(|p| {
-                let font_regular = asset_server.load("fonts/montserrat/Montserrat-Regular.ttf");
+                let font_regular = asset_server.load(FONT_REGULAR);
                 let color = Color::WHITE;
                 let heading = TextStyle {
                     font: font_regular.clone(),
