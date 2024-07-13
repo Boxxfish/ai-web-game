@@ -6,6 +6,7 @@ use bevy::{
 use crate::{
     gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     ui::{
+        input_prompt::{InputPrompt, InputPromptBundle, InputType},
         menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
     },
@@ -251,6 +252,12 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
         IsDefaultUiCamera,
     ));
 
+    create_game_ui(&mut commands);
+
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
+}
+
+fn create_game_ui(commands: &mut Commands) {
     commands
         .spawn((
             GameScreen,
@@ -268,21 +275,55 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
                 style: Style {
                     width: Val::Percent(100.),
                     height: Val::Percent(100.),
-                    justify_content: JustifyContent::End,
-                    align_items: AlignItems::Center,
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(16.)),
+                    padding: UiRect::all(Val::Px(8.)),
                     ..default()
                 },
                 ..default()
             })
             .with_children(|p| {
-                p.spawn((MenuButtonBundle::from_label("BACK"),));
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Start,
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    for (label, input) in [
+                        ("Move", InputType::WASD),
+                        ("Toggle Filter", InputType::Space),
+                    ] {
+                        p.spawn(InputPromptBundle {
+                            input_prompt: InputPrompt {
+                                label: label.into(),
+                                input,
+                            },
+                            ..default()
+                        });
+                    }
+                });
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(100.),
+                        display: Display::Flex,
+                        justify_content: JustifyContent::End,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(8.)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    p.spawn((MenuButtonBundle::from_label("BACK"),));
+                });
             });
         });
-
-    ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
 fn destroy_game(
@@ -346,37 +387,7 @@ fn handle_game_transition(
                     let level_: LevelLayout = level.as_ref().unwrap().as_ref().clone();
                     commands.remove_resource::<LevelLayout>();
                     commands.insert_resource(level_);
-                    commands
-                        .spawn((
-                            GameScreen,
-                            NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(100.),
-                                    height: Val::Percent(100.),
-                                    ..default()
-                                },
-                                ..default()
-                            },
-                        ))
-                        .with_children(|p| {
-                            p.spawn(NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(100.),
-                                    height: Val::Percent(100.),
-                                    justify_content: JustifyContent::End,
-                                    align_items: AlignItems::Center,
-                                    display: Display::Flex,
-                                    flex_direction: FlexDirection::Column,
-                                    padding: UiRect::all(Val::Px(16.)),
-                                    ..default()
-                                },
-                                ..default()
-                            })
-                            .with_children(|p| {
-                                p.spawn((MenuButtonBundle::from_label("BACK"),));
-                            });
-                        });
-
+                    create_game_ui(&mut commands);
                     ev_start_fade.send(StartFadeEvent { fade_in: true });
                     Some(ScreenState::Game)
                 }
