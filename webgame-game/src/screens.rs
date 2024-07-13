@@ -69,10 +69,10 @@ struct LoadingScreen;
 
 /// A list of assets to load before the game runs.
 const ASSETS_TO_LOAD: &[&str] = &[
-    "furniture/wall.glb",
-    "furniture/wallDoorway.glb",
-    "furniture/doorway.glb",
-    "furniture/floorFull.glb",
+    "furniture/wall.glb#Scene0",
+    "furniture/wallDoorway.glb#Scene0",
+    "furniture/doorway.glb#Scene0",
+    "furniture/floorFull.glb#Scene0",
 ];
 
 /// Handles toa ssets that must be loaded before the game runs.
