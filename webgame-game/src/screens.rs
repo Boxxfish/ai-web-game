@@ -1,12 +1,12 @@
-use bevy::{
-    prelude::*,
-    ui::{UiBatch, UiImageBindGroups},
-};
+use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
     gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
+    models::{MeasureModel, PolicyNet},
+    net::{NNWrapper, SafeTensorsData},
     ui::{
-        menu_button::{MenuButton, MenuButtonBundle, MenuButtonPressedEvent},
+        input_prompt::{InputPrompt, InputPromptBundle, InputType},
+        menu_button::{MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
     },
 };
@@ -16,8 +16,14 @@ pub struct ScreensPlayPlugin;
 
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(ScreenState::TitleScreen)
+        app.insert_state(ScreenState::Loading)
             .add_systems(Startup, init_ui)
+            .add_systems(OnEnter(ScreenState::Loading), init_loading)
+            .add_systems(OnExit(ScreenState::Loading), destroy_loading)
+            .add_systems(
+                Update,
+                check_assets_loaded.run_if(in_state(ScreenState::Loading)),
+            )
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
             .add_systems(
@@ -52,10 +58,144 @@ impl Plugin for ScreensPlayPlugin {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, States, Default)]
 pub enum ScreenState {
     #[default]
+    Loading,
     TitleScreen,
     LevelSelect,
     Game,
     About,
+}
+
+const FONT_REGULAR: &str = "fonts/montserrat/Montserrat-Regular.ttf";
+const FONT_BOLD: &str = "fonts/montserrat/Montserrat-Bold.ttf";
+
+/// Denotes the loading screen.
+#[derive(Component)]
+struct LoadingScreen;
+
+enum AssetType {
+    Scene,
+    Animation,
+    Image,
+}
+
+/// A list of assets to load before the game runs.
+const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
+    (
+        "characters/cyborgFemaleA.glb#Animation0",
+        AssetType::Animation,
+    ),
+    (
+        "characters/cyborgFemaleA.glb#Animation1",
+        AssetType::Animation,
+    ),
+    ("characters/cyborgFemaleA.glb#Scene0", AssetType::Scene),
+    ("characters/skaterMaleA.glb#Scene0", AssetType::Scene),
+    ("furniture/wall.glb#Scene0", AssetType::Scene),
+    ("furniture/wallDoorway.glb#Scene0", AssetType::Scene),
+    ("furniture/doorway.glb#Scene0", AssetType::Scene),
+    ("furniture/floorFull.glb#Scene0", AssetType::Scene),
+    (
+        "furniture/bathroomCabinetDrawer.glb#Scene0",
+        AssetType::Scene,
+    ),
+    ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
+    ("key.glb#Scene0", AssetType::Scene),
+    (
+        "input_prompts/keyboard_mouse/keyboard_wasd_outline.png",
+        AssetType::Image,
+    ),
+    (
+        "input_prompts/keyboard_mouse/keyboard_space_outline.png",
+        AssetType::Image,
+    ),
+];
+
+/// Handles toa ssets that must be loaded before the game runs.
+#[derive(Resource)]
+struct LoadingAssets {
+    pub handles: Vec<UntypedHandle>,
+}
+
+fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load(FONT_REGULAR);
+    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    commands
+        .spawn((
+            LoadingScreen,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::End,
+                    justify_content: JustifyContent::End,
+                    padding: UiRect::all(Val::Px(16.)),
+                    ..default()
+                },
+                background_color: Color::BLACK.into(),
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            p.spawn(TextBundle::from_section(
+                "Loading...",
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 22.,
+                    color: Color::WHITE,
+                },
+            ));
+        });
+
+    commands.spawn(NNWrapper::<PolicyNet>::with_sftensors(
+        asset_server.load("p_net.safetensors"),
+    ));
+    commands.spawn(NNWrapper::<MeasureModel>::with_sftensors(
+        asset_server.load("model.safetensors"),
+    ));
+    let mut handles = Vec::new();
+    for (path, asset_type) in ASSETS_TO_LOAD {
+        match asset_type {
+            AssetType::Scene => handles.push(asset_server.load::<Scene>(*path).untyped()),
+            AssetType::Animation => {
+                handles.push(asset_server.load::<AnimationClip>(*path).untyped())
+            }
+            AssetType::Image => handles.push(asset_server.load::<Image>(*path).untyped()),
+        }
+    }
+    commands.insert_resource(LoadingAssets { handles });
+}
+
+/// Checks if assets are loaded, and transition to title screen if so.
+fn check_assets_loaded(
+    loading_assets: Option<Res<LoadingAssets>>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<ScreenState>>,
+) {
+    if let Some(loading_assets) = loading_assets {
+        for handle in &loading_assets.handles {
+            let load_state = asset_server.recursive_dependency_load_state(handle);
+            match load_state {
+                RecursiveDependencyLoadState::Loading | RecursiveDependencyLoadState::NotLoaded => {
+                    return
+                }
+                _ => (),
+            }
+        }
+        commands.remove_resource::<LoadingAssets>();
+        next_state.0 = Some(ScreenState::TitleScreen);
+    }
+}
+
+fn destroy_loading(
+    mut commands: Commands,
+    screen_query: Query<Entity, With<LoadingScreen>>,
+    cam_query: Query<Entity, With<Camera2d>>,
+) {
+    commands.entity(screen_query.single()).despawn_recursive();
+    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 /// Denotes the title screen.
@@ -83,7 +223,7 @@ fn init_title_screen(
     asset_server: Res<AssetServer>,
     mut ev_start_fade: EventWriter<StartFadeEvent>,
 ) {
-    let font_bold = asset_server.load("fonts/montserrat/Montserrat-Bold.ttf");
+    let font_bold = asset_server.load(FONT_BOLD);
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 
     commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
@@ -251,6 +391,12 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
         IsDefaultUiCamera,
     ));
 
+    create_game_ui(&mut commands);
+
+    ev_start_fade.send(StartFadeEvent { fade_in: true });
+}
+
+fn create_game_ui(commands: &mut Commands) {
     commands
         .spawn((
             GameScreen,
@@ -268,21 +414,55 @@ fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEve
                 style: Style {
                     width: Val::Percent(100.),
                     height: Val::Percent(100.),
-                    justify_content: JustifyContent::End,
-                    align_items: AlignItems::Center,
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(16.)),
+                    padding: UiRect::all(Val::Px(8.)),
                     ..default()
                 },
                 ..default()
             })
             .with_children(|p| {
-                p.spawn((MenuButtonBundle::from_label("BACK"),));
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Start,
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    for (label, input) in [
+                        ("Move", InputType::WASD),
+                        ("Toggle Filter", InputType::Space),
+                    ] {
+                        p.spawn(InputPromptBundle {
+                            input_prompt: InputPrompt {
+                                label: label.into(),
+                                input,
+                            },
+                            ..default()
+                        });
+                    }
+                });
+                p.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(100.),
+                        display: Display::Flex,
+                        justify_content: JustifyContent::End,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(8.)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|p| {
+                    p.spawn((MenuButtonBundle::from_label("BACK"),));
+                });
             });
         });
-
-    ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
 fn destroy_game(
@@ -346,37 +526,7 @@ fn handle_game_transition(
                     let level_: LevelLayout = level.as_ref().unwrap().as_ref().clone();
                     commands.remove_resource::<LevelLayout>();
                     commands.insert_resource(level_);
-                    commands
-                        .spawn((
-                            GameScreen,
-                            NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(100.),
-                                    height: Val::Percent(100.),
-                                    ..default()
-                                },
-                                ..default()
-                            },
-                        ))
-                        .with_children(|p| {
-                            p.spawn(NodeBundle {
-                                style: Style {
-                                    width: Val::Percent(100.),
-                                    height: Val::Percent(100.),
-                                    justify_content: JustifyContent::End,
-                                    align_items: AlignItems::Center,
-                                    display: Display::Flex,
-                                    flex_direction: FlexDirection::Column,
-                                    padding: UiRect::all(Val::Px(16.)),
-                                    ..default()
-                                },
-                                ..default()
-                            })
-                            .with_children(|p| {
-                                p.spawn((MenuButtonBundle::from_label("BACK"),));
-                            });
-                        });
-
+                    create_game_ui(&mut commands);
                     ev_start_fade.send(StartFadeEvent { fade_in: true });
                     Some(ScreenState::Game)
                 }
@@ -587,7 +737,7 @@ fn init_about(
                     z_index: ZIndex::Local(1),
                     ..default()
                 }).with_children(|p| {
-                let font_regular = asset_server.load("fonts/montserrat/Montserrat-Regular.ttf");
+                let font_regular = asset_server.load(FONT_REGULAR);
                 let color = Color::WHITE;
                 let heading = TextStyle {
                     font: font_regular.clone(),

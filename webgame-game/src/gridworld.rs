@@ -17,8 +17,7 @@ use thiserror::Error;
 use crate::{
     agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
     configs::IsPlayable,
-    models::PolicyNet,
-    net::NNWrapper,
+    filter::BayesFilter,
     observer::{DebugObserver, Observable, Observer, Wall},
     screens::GameScreen,
     world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
@@ -93,7 +92,7 @@ pub enum LoadedLevelDataLoaderError {
     #[error("Could not load asset: {0}")]
     Io(#[from] std::io::Error),
     #[error("Could not parse JSON: {0}")]
-    RonSpannedError(#[from] serde_json::error::Error),
+    JSONSpannedError(#[from] serde_json::error::Error),
 }
 
 impl AssetLoader for LoadedLevelDataLoader {
@@ -227,7 +226,12 @@ fn setup_entities(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     is_playable: Option<Res<IsPlayable>>,
+    mut filter_query: Query<&mut BayesFilter>,
 ) {
+    for mut filter in filter_query.iter_mut() {
+        filter.reset();
+    }
+
     commands
         .spawn((
             GameScreen,
@@ -263,7 +267,6 @@ fn setup_entities(
                 Observer::default(),
                 Observable,
                 DebugObserver,
-                NNWrapper::<PolicyNet>::with_sftensors(asset_server.load("p_net.safetensors")),
             ))
             .with_children(|p| {
                 if is_playable.is_some() {
