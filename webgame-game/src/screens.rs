@@ -73,6 +73,8 @@ enum AssetType {
 
 /// A list of assets to load before the game runs.
 const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
+    ("characters/cyborgFemaleA.glb#Scene0", AssetType::Scene),
+    ("characters/skaterMaleA.glb#Scene0", AssetType::Scene),
     ("furniture/wall.glb#Scene0", AssetType::Scene),
     ("furniture/wallDoorway.glb#Scene0",AssetType::Scene),
     ("furniture/doorway.glb#Scene0",AssetType::Scene),
