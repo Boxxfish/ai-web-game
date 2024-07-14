@@ -99,7 +99,7 @@ const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
         AssetType::Scene,
     ),
     ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
-    ("furniture/key.glb#Scene0", AssetType::Scene),
+    ("key.glb#Scene0", AssetType::Scene),
     (
         "input_prompts/keyboard_mouse/keyboard_wasd_outline.png",
         AssetType::Image,
