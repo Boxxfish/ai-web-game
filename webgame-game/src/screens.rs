@@ -1,12 +1,11 @@
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
-    gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
-    ui::{
+    gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE}, net::SafeTensorsData, ui::{
         input_prompt::{InputPrompt, InputPromptBundle, InputType},
         menu_button::{MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
-    },
+    }
 };
 
 /// Describes and handles logic for various screens.
@@ -67,12 +66,19 @@ const FONT_BOLD: &str = "fonts/montserrat/Montserrat-Bold.ttf";
 #[derive(Component)]
 struct LoadingScreen;
 
+enum AssetType {
+    Scene,
+    Safetensors,
+}
+
 /// A list of assets to load before the game runs.
-const ASSETS_TO_LOAD: &[&str] = &[
-    "furniture/wall.glb#Scene0",
-    "furniture/wallDoorway.glb#Scene0",
-    "furniture/doorway.glb#Scene0",
-    "furniture/floorFull.glb#Scene0",
+const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
+    ("furniture/wall.glb#Scene0", AssetType::Scene),
+    ("furniture/wallDoorway.glb#Scene0",AssetType::Scene),
+    ("furniture/doorway.glb#Scene0",AssetType::Scene),
+    ("furniture/floorFull.glb#Scene0",AssetType::Scene),
+    ("p_net.safetensors", AssetType::Safetensors),
+    ("model.safetensors", AssetType::Safetensors),
 ];
 
 /// Handles toa ssets that must be loaded before the game runs.
@@ -114,8 +120,11 @@ fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 
     let mut handles = Vec::new();
-    for path in ASSETS_TO_LOAD {
-        handles.push(asset_server.load::<Scene>(*path).untyped())
+    for (path, asset_type) in ASSETS_TO_LOAD {
+        match asset_type {
+            AssetType::Scene => handles.push(asset_server.load::<Scene>(*path).untyped()),
+            AssetType::Safetensors => handles.push(asset_server.load::<SafeTensorsData>(*path).untyped()),
+        }
     }
     commands.insert_resource(LoadingAssets { handles });
 }
