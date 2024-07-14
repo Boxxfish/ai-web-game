@@ -69,16 +69,21 @@ struct LoadingScreen;
 enum AssetType {
     Scene,
     Safetensors,
+    Animation
 }
 
 /// A list of assets to load before the game runs.
 const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
+    ("characters/cyborgFemaleA.glb#Animation0", AssetType::Animation),
+    ("characters/cyborgFemaleA.glb#Animation1", AssetType::Animation),
     ("characters/cyborgFemaleA.glb#Scene0", AssetType::Scene),
     ("characters/skaterMaleA.glb#Scene0", AssetType::Scene),
     ("furniture/wall.glb#Scene0", AssetType::Scene),
     ("furniture/wallDoorway.glb#Scene0",AssetType::Scene),
     ("furniture/doorway.glb#Scene0",AssetType::Scene),
     ("furniture/floorFull.glb#Scene0",AssetType::Scene),
+    ("furniture/bathroomCabinetDrawer.glb#Scene0",AssetType::Scene),
+    ("furniture/pottedPlant.glb#Scene0",AssetType::Scene),
     ("p_net.safetensors", AssetType::Safetensors),
     ("model.safetensors", AssetType::Safetensors),
 ];
@@ -125,6 +130,7 @@ fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     for (path, asset_type) in ASSETS_TO_LOAD {
         match asset_type {
             AssetType::Scene => handles.push(asset_server.load::<Scene>(*path).untyped()),
+            AssetType::Animation => handles.push(asset_server.load::<AnimationClip>(*path).untyped()),
             AssetType::Safetensors => handles.push(asset_server.load::<SafeTensorsData>(*path).untyped()),
         }
     }
