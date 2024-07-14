@@ -67,17 +67,18 @@ impl BayesFilter {
 fn init_filter_net(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         BayesFilter::new(8),
-        NNWrapper::<MeasureModel>::with_sftensors(asset_server.load("model.safetensors")),
     ));
 }
 
 /// Updates filter probabilities.
 #[allow(clippy::too_many_arguments)]
 fn update_filter(
-    mut filter_query: Query<(&mut BayesFilter, &NNWrapper<MeasureModel>)>,
+    net_query: Query<&NNWrapper<MeasureModel>>,
+    mut filter_query: Query<&mut BayesFilter>,
     pursuer_query: Query<&PursuerAgent>,
 ) {
-    for (mut filter, model) in filter_query.iter_mut() {
+    for mut filter in filter_query.iter_mut() {
+        let model = net_query.single();
         if let Some(net) = &model.net {
             if let Ok(pursuer) = pursuer_query.get_single() {
                 if pursuer.obs_timer.just_finished() {

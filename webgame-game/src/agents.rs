@@ -181,9 +181,11 @@ fn set_player_action(
 
 /// Updates the Pursuer's next action.
 fn set_pursuer_action(
-    mut pursuer_query: Query<(&mut NextAction, &PursuerAgent, &NNWrapper<PolicyNet>)>,
+    net_query: Query<&NNWrapper<PolicyNet>>,
+    mut pursuer_query: Query<(&mut NextAction, &PursuerAgent)>,
 ) {
-    if let Ok((mut next_action, pursuer, p_net)) = pursuer_query.get_single_mut() {
+    if let Ok((mut next_action, pursuer)) = pursuer_query.get_single_mut() {
+        let p_net = net_query.single();
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
                 if let Some((grid, objs, objs_attn_mask)) = &pursuer.observations {

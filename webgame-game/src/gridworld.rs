@@ -15,7 +15,12 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent}, configs::IsPlayable, filter::BayesFilter, models::PolicyNet, net::NNWrapper, observer::{DebugObserver, Observable, Observer, Wall}, screens::GameScreen, world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker}
+    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
+    configs::IsPlayable,
+    filter::BayesFilter,
+    observer::{DebugObserver, Observable, Observer, Wall},
+    screens::GameScreen,
+    world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -87,7 +92,7 @@ pub enum LoadedLevelDataLoaderError {
     #[error("Could not load asset: {0}")]
     Io(#[from] std::io::Error),
     #[error("Could not parse JSON: {0}")]
-    RonSpannedError(#[from] serde_json::error::Error),
+    JSONSpannedError(#[from] serde_json::error::Error),
 }
 
 impl AssetLoader for LoadedLevelDataLoader {
@@ -262,7 +267,6 @@ fn setup_entities(
                 Observer::default(),
                 Observable,
                 DebugObserver,
-                NNWrapper::<PolicyNet>::with_sftensors(asset_server.load("p_net.safetensors")),
             ))
             .with_children(|p| {
                 if is_playable.is_some() {

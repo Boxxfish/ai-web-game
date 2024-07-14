@@ -1,11 +1,14 @@
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
-    gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE}, net::SafeTensorsData, ui::{
+    gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
+    models::{MeasureModel, PolicyNet},
+    net::{NNWrapper, SafeTensorsData},
+    ui::{
         input_prompt::{InputPrompt, InputPromptBundle, InputType},
         menu_button::{MenuButtonBundle, MenuButtonPressedEvent},
         screen_transition::{FadeFinishedEvent, ScreenTransitionBundle, StartFadeEvent},
-    }
+    },
 };
 
 /// Describes and handles logic for various screens.
@@ -17,7 +20,10 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(Startup, init_ui)
             .add_systems(OnEnter(ScreenState::Loading), init_loading)
             .add_systems(OnExit(ScreenState::Loading), destroy_loading)
-            .add_systems(Update, check_assets_loaded.run_if(in_state(ScreenState::Loading)))
+            .add_systems(
+                Update,
+                check_assets_loaded.run_if(in_state(ScreenState::Loading)),
+            )
             .add_systems(OnEnter(ScreenState::TitleScreen), init_title_screen)
             .add_systems(OnExit(ScreenState::TitleScreen), destroy_title_screen)
             .add_systems(
@@ -68,24 +74,30 @@ struct LoadingScreen;
 
 enum AssetType {
     Scene,
-    Safetensors,
-    Animation
+    Animation,
 }
 
 /// A list of assets to load before the game runs.
 const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
-    ("characters/cyborgFemaleA.glb#Animation0", AssetType::Animation),
-    ("characters/cyborgFemaleA.glb#Animation1", AssetType::Animation),
+    (
+        "characters/cyborgFemaleA.glb#Animation0",
+        AssetType::Animation,
+    ),
+    (
+        "characters/cyborgFemaleA.glb#Animation1",
+        AssetType::Animation,
+    ),
     ("characters/cyborgFemaleA.glb#Scene0", AssetType::Scene),
     ("characters/skaterMaleA.glb#Scene0", AssetType::Scene),
     ("furniture/wall.glb#Scene0", AssetType::Scene),
-    ("furniture/wallDoorway.glb#Scene0",AssetType::Scene),
-    ("furniture/doorway.glb#Scene0",AssetType::Scene),
-    ("furniture/floorFull.glb#Scene0",AssetType::Scene),
-    ("furniture/bathroomCabinetDrawer.glb#Scene0",AssetType::Scene),
-    ("furniture/pottedPlant.glb#Scene0",AssetType::Scene),
-    ("p_net.safetensors", AssetType::Safetensors),
-    ("model.safetensors", AssetType::Safetensors),
+    ("furniture/wallDoorway.glb#Scene0", AssetType::Scene),
+    ("furniture/doorway.glb#Scene0", AssetType::Scene),
+    ("furniture/floorFull.glb#Scene0", AssetType::Scene),
+    (
+        "furniture/bathroomCabinetDrawer.glb#Scene0",
+        AssetType::Scene,
+    ),
+    ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
 ];
 
 /// Handles toa ssets that must be loaded before the game runs.
@@ -126,12 +138,19 @@ fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
         });
 
+    commands.spawn(NNWrapper::<PolicyNet>::with_sftensors(
+        asset_server.load("p_net.safetensors"),
+    ));
+    commands.spawn(NNWrapper::<MeasureModel>::with_sftensors(
+        asset_server.load("model.safetensors"),
+    ));
     let mut handles = Vec::new();
     for (path, asset_type) in ASSETS_TO_LOAD {
         match asset_type {
             AssetType::Scene => handles.push(asset_server.load::<Scene>(*path).untyped()),
-            AssetType::Animation => handles.push(asset_server.load::<AnimationClip>(*path).untyped()),
-            AssetType::Safetensors => handles.push(asset_server.load::<SafeTensorsData>(*path).untyped()),
+            AssetType::Animation => {
+                handles.push(asset_server.load::<AnimationClip>(*path).untyped())
+            }
         }
     }
     commands.insert_resource(LoadingAssets { handles });
