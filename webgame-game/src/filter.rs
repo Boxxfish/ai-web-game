@@ -64,10 +64,8 @@ impl BayesFilter {
 }
 
 /// Initializes the filter.
-fn init_filter_net(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn((
-        BayesFilter::new(8),
-    ));
+fn init_filter_net(mut commands: Commands) {
+    commands.spawn((BayesFilter::new(8),));
 }
 
 /// Updates filter probabilities.
@@ -190,7 +188,7 @@ fn init_probs_viewer(
                         1.5,
                     ))
                     .with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
-                    visibility: Visibility::Hidden,
+                visibility: Visibility::Hidden,
                 ..default()
             },
         ));

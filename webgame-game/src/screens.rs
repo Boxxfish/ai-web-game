@@ -75,6 +75,7 @@ struct LoadingScreen;
 enum AssetType {
     Scene,
     Animation,
+    Image,
 }
 
 /// A list of assets to load before the game runs.
@@ -98,6 +99,15 @@ const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
         AssetType::Scene,
     ),
     ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
+    ("furniture/key.glb#Scene0", AssetType::Scene),
+    (
+        "input_prompts/keyboard_mouse/keyboard_wasd_outline.png",
+        AssetType::Image,
+    ),
+    (
+        "input_prompts/keyboard_mouse/keyboard_space_outline.png",
+        AssetType::Image,
+    ),
 ];
 
 /// Handles toa ssets that must be loaded before the game runs.
@@ -151,6 +161,7 @@ fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
             AssetType::Animation => {
                 handles.push(asset_server.load::<AnimationClip>(*path).untyped())
             }
+            AssetType::Image => handles.push(asset_server.load::<Image>(*path).untyped()),
         }
     }
     commands.insert_resource(LoadingAssets { handles });
