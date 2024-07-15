@@ -9,7 +9,7 @@ use bevy::{
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
-    agents::PursuerAgent,
+    agents::{PlayerAgent, PursuerAgent},
     gridworld::{LevelLayout, GRID_CELL_SIZE},
     models::MeasureModel,
     net::{load_weights_into_net, NNWrapper},
@@ -32,7 +32,8 @@ impl Plugin for FilterPlayPlugin {
             Update,
             (
                 init_probs_viewer.run_if(resource_added::<LevelLayout>),
-                update_filter.run_if(resource_exists::<LevelLayout>),
+                update_filter_learned.run_if(resource_exists::<LevelLayout>),
+                update_filter_manual.run_if(resource_exists::<LevelLayout>),
                 update_probs_viewers,
                 load_weights_into_net::<MeasureModel>,
                 toggle_viewers,
@@ -63,16 +64,47 @@ impl BayesFilter {
     }
 }
 
+/// Causes the filter to use the learned model.
+#[derive(Component)]
+struct LearnedFilter;
+
+/// Causes the filter to use manual rules.
+#[derive(Component)]
+struct ManualFilter;
+
 /// Initializes the filter.
 fn init_filter_net(mut commands: Commands) {
-    commands.spawn((BayesFilter::new(8),));
+    commands.spawn((BayesFilter::new(8), ManualFilter));
 }
 
-/// Updates filter probabilities.
-#[allow(clippy::too_many_arguments)]
-fn update_filter(
+fn apply_motion(probs: &Tensor) -> candle_core::Result<Tensor> {
+    let kernel = (Tensor::from_slice(
+        &[0., 1., 0., 1., 1., 1., 0., 1., 0.],
+        &[1, 3, 3],
+        &Device::Cpu,
+    )
+    .unwrap()
+        / 5.)
+        .unwrap()
+        .reshape(&[1, 1, 3, 3])
+        .unwrap()
+        .to_dtype(DType::F32)
+        .unwrap();
+    let probs = probs
+        .unsqueeze(0)?
+        .unsqueeze(0)?
+        .conv2d(&kernel, 1, 1, 1, 1)?
+        .squeeze(0)
+        .unwrap()
+        .squeeze(0)
+        .unwrap();
+    &probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64
+}
+
+/// Updates filter probabilities for learned filters.
+fn update_filter_learned(
     net_query: Query<&NNWrapper<MeasureModel>>,
-    mut filter_query: Query<&mut BayesFilter>,
+    mut filter_query: Query<&mut BayesFilter, With<LearnedFilter>>,
     pursuer_query: Query<&PursuerAgent>,
 ) {
     for mut filter in filter_query.iter_mut() {
@@ -82,33 +114,7 @@ fn update_filter(
                 if pursuer.obs_timer.just_finished() {
                     if let Some((grid, objs, objs_attn)) = pursuer.observations.as_ref() {
                         // Apply motion model
-                        let kernel = (Tensor::from_slice(
-                            &[0., 1., 0., 1., 1., 1., 0., 1., 0.],
-                            &[1, 3, 3],
-                            &Device::Cpu,
-                        )
-                        .unwrap()
-                            / 5.)
-                            .unwrap()
-                            .reshape(&[1, 1, 3, 3])
-                            .unwrap()
-                            .to_dtype(DType::F32)
-                            .unwrap();
-                        let probs = filter
-                            .probs
-                            .unsqueeze(0)
-                            .unwrap()
-                            .unsqueeze(0)
-                            .unwrap()
-                            .conv2d(&kernel, 1, 1, 1, 1)
-                            .unwrap()
-                            .squeeze(0)
-                            .unwrap()
-                            .squeeze(0)
-                            .unwrap();
-                        let probs = (&probs
-                            / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)
-                            .unwrap();
+                        let probs = apply_motion(&filter.probs).unwrap();
 
                         // Apply measurement model
                         let lkhd = net
@@ -127,6 +133,78 @@ fn update_filter(
 
                         filter.probs = probs;
                     }
+                }
+            }
+        }
+    }
+}
+
+fn pos_to_grid(x: f32, y: f32, cell_size: f32) -> (usize, usize) {
+    (
+        (x / cell_size).round() as usize,
+        (y / cell_size).round() as usize,
+    )
+}
+
+/// Updates filter probabilities for manual filters.
+fn update_filter_manual(
+    mut filter_query: Query<&mut BayesFilter, With<ManualFilter>>,
+    pursuer_query: Query<&PursuerAgent>,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
+    level: Res<LevelLayout>,
+) {
+    for mut filter in filter_query.iter_mut() {
+        if let Ok(pursuer) = pursuer_query.get_single() {
+            if pursuer.obs_timer.just_finished() {
+                if let Some(agent_state) = &pursuer.agent_state {
+                    // Apply motion model
+                    let probs = apply_motion(&filter.probs).unwrap();
+
+                    // Apply measurement model
+                    let size = level.size;
+                    let mut lkhd = vec![vec![0.; level.size]; level.size];
+                    for y in 0..size {
+                        for x in 0..size {
+                            let grid_lkhd = (!level.walls[y * size + x]) as u8 as f32;
+                            let mut agent_lkhd = 1.;
+
+                            if let Ok((player_e, player_xform)) = player_query.get_single() {
+                                if agent_state.observing.contains(&player_e) {
+                                    let player_pos = player_xform.translation().xy();
+                                    let player_pos =
+                                        pos_to_grid(player_pos.x, player_pos.y, GRID_CELL_SIZE);
+                                    if player_pos != (x, y) {
+                                        agent_lkhd = 0.01;
+                                    }
+                                } else {
+                                    // Cells within vision have 0% chance of agent being there
+                                    agent_lkhd =
+                                        (!agent_state.visible_cells[y * size + x]) as u8 as f32;
+                                    // All other cells are equally probable
+                                    agent_lkhd *= 1.
+                                        / (size.pow(2)
+                                            - agent_state
+                                                .visible_cells
+                                                .iter()
+                                                .map(|x| *x as usize)
+                                                .sum::<usize>())
+                                            as f32;
+                                }
+                            }
+                            lkhd[y][x] = grid_lkhd * agent_lkhd;
+                        }
+                    }
+                    let lkhd = Tensor::from_slice(
+                        &lkhd.into_iter().flatten().collect::<Vec<f32>>(),
+                        &[size, size],
+                        &Device::Cpu,
+                    );
+                    let probs = (probs * lkhd).unwrap();
+                    let probs = (&probs
+                        / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)
+                        .unwrap();
+
+                    filter.probs = probs;
                 }
             }
         }

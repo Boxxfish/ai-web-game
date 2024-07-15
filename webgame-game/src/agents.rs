@@ -9,7 +9,7 @@ use crate::{
     gridworld::{LevelLayout, ShouldRun, GRID_CELL_SIZE},
     models::PolicyNet,
     net::{load_weights_into_net, NNWrapper},
-    observations::encode_obs,
+    observations::{encode_obs, encode_state, AgentState},
     observer::{Observable, Observer},
     world_objs::NoiseSource,
 };
@@ -65,6 +65,7 @@ impl Default for Agent {
 pub struct PursuerAgent {
     pub observations: Option<(Tensor, Option<Tensor>, Option<Tensor>)>,
     pub obs_timer: Timer,
+    pub agent_state: Option<AgentState>,
 }
 
 impl Default for PursuerAgent {
@@ -72,6 +73,7 @@ impl Default for PursuerAgent {
         Self {
             observations: None,
             obs_timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+            agent_state: None,
         }
     }
 }
@@ -93,16 +95,17 @@ fn update_observations(
             pursuer.obs_timer.tick(time.delta());
             if pursuer.obs_timer.just_finished() {
                 // Encode observations
+                let agent_state = encode_state(&p_query, &listening_query, &level);
                 let (grid, _, _) = encode_obs(
                     &observable_query,
                     &noise_query,
                     player_e,
                     &level,
-                    &p_query,
-                    &listening_query,
+                    &agent_state,
                 )
                 .unwrap();
                 pursuer.observations = Some((grid, None, None));
+                pursuer.agent_state = Some(agent_state);
             }
         }
     }

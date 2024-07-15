@@ -31,8 +31,7 @@ pub fn encode_obs(
     noise_query: &Query<(Entity, &GlobalTransform, &NoiseSource)>,
     player_e: Entity,
     level: &Res<LevelLayout>,
-    pursuer_query: &Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
-    listening_query: &Query<(Entity, &GlobalTransform, &NoiseSource)>,
+    agent_state: &AgentState,
 ) -> candle_core::Result<(Tensor, Tensor, Tensor)> {
     // Encode global state stuff
     let mut objects = HashMap::new();
@@ -57,7 +56,6 @@ pub fn encode_obs(
     }
 
     // Set up observations
-    let agent_state = encode_state(pursuer_query, listening_query, level);
     let player_obs = objects.get(&player_e).unwrap();
     let device = Device::Cpu;
     let mut obs_vec = vec![0.; 7];
@@ -135,6 +133,7 @@ pub fn encode_obs(
     ))
 }
 
+#[derive(Clone)]
 pub struct AgentState {
     pub pos: Vec2,
     pub dir: Vec2,
