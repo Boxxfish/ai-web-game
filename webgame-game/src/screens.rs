@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
@@ -374,14 +376,16 @@ enum GameAction {
 }
 
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
+    let cam_angle = (20.0_f32).to_radians();
+    let cam_dist = 700.;
     commands.spawn((
         Camera3dBundle {
             transform: Transform::from_translation(Vec3::new(
                 GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
-                -300.,
-                700.,
+                -cam_angle.sin() * cam_dist + GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
+                cam_angle.cos() * cam_dist,
             ))
-            .with_rotation(Quat::from_rotation_x(0.5)),
+            .with_rotation(Quat::from_rotation_x(cam_angle)),
             projection: Projection::Perspective(PerspectiveProjection {
                 fov: 0.4,
                 ..default()
