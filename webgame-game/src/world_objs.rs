@@ -23,9 +23,27 @@ impl Plugin for WorldObjPlugin {
     }
 }
 
+pub struct WorldObjPlayPlugin;
+
+impl Plugin for WorldObjPlayPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            key_idle_anim,
+        );
+    }
+}
+
 /// A key for unlocking doors.
 #[derive(Component)]
 pub struct Key;
+
+/// Adds an idle animation to keys.
+pub fn key_idle_anim(mut key_query: Query<&mut Transform, With<Key>>, time: Res<Time>) {
+    for mut key_xform in key_query.iter_mut() {
+        key_xform.translation.z = time.elapsed_seconds_wrapped().cos() * 10. + 5.;
+    }
+}
 
 /// A door that can be opened and closed.
 #[derive(Component, Default)]
