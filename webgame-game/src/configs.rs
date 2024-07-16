@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::ScreensPlayPlugin, ui::UIPlugin, world_objs::WorldObjPlugin
+    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::{ScreenState, ScreensPlayPlugin}, ui::UIPlugin, world_objs::WorldObjPlugin
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -45,7 +45,8 @@ pub struct IsPlayable;
 
 impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(IsPlayable)
+        app.insert_state(ScreenState::Game)
+            .insert_resource(IsPlayable)
             .insert_resource(AssetMetaCheck::Never)
             .insert_resource(ClearColor(Color::BLACK))
             .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -79,7 +80,7 @@ impl Plugin for ReleaseCfgPlugin {
 /// The configuration for library builds (e.g. for machine learning).
 pub struct LibCfgPlugin;
 
-const FIXED_TS: f32 = 0.5;
+const FIXED_TS: f32 = 0.4;
 
 impl Plugin for LibCfgPlugin {
     fn build(&self, app: &mut App) {

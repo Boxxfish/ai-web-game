@@ -18,7 +18,7 @@ pub struct ScreensPlayPlugin;
 
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(ScreenState::Loading)
+        app
             .add_systems(Startup, init_ui)
             .add_systems(OnEnter(ScreenState::Loading), init_loading)
             .add_systems(OnExit(ScreenState::Loading), destroy_loading)

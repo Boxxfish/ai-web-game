@@ -22,7 +22,6 @@ impl Plugin for AgentPlugin {
         app.add_systems(
             Update,
             ((
-                update_observations,
                 move_agents,
                 visualize_agent::<PursuerAgent>(Color::RED),
                 visualize_agent::<PlayerAgent>(Color::GREEN),
@@ -40,7 +39,8 @@ impl Plugin for AgentPlayPlugin {
         app.add_systems(
             Update,
             (
-                (set_player_action, set_pursuer_action).run_if(resource_exists::<ShouldRun>),
+                (set_player_action, set_pursuer_action, update_observations)
+                    .run_if(resource_exists::<ShouldRun>),
                 load_weights_into_net::<PolicyNet>,
             ),
         );
@@ -252,12 +252,12 @@ pub fn move_agents(
     for (agent_e, mut agent, mut controller, next_action, children) in agent_query.iter_mut() {
         let dir = next_action.dir;
         let anim_e = get_entity(&agent_e, &["", "", "Root"], &child_query);
-        if let Some(anim_e) = anim_e {
-            if let Ok(mut anim) = anim_query.get_mut(anim_e) {
-                if dir.length_squared() > 0.1 {
-                    let dir = dir.normalize();
-                    agent.dir = dir;
-                    controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+        if dir.length_squared() > 0.1 {
+            let dir = dir.normalize();
+            agent.dir = dir;
+            controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+            if let Some(anim_e) = anim_e {
+                if let Ok(mut anim) = anim_query.get_mut(anim_e) {
                     for child in children.iter() {
                         if let Ok(mut xform) = vis_query.get_mut(*child) {
                             xform.look_to(-dir.extend(0.), Vec3::Z);
@@ -271,7 +271,11 @@ pub fn move_agents(
                             break;
                         }
                     }
-                } else {
+                }
+            }
+        } else if let Some(anim_e) = anim_e {
+            if let Ok(mut anim) = anim_query.get_mut(anim_e) {
+                {
                     anim.play_with_transition(
                         asset_server.load("characters/cyborgFemaleA.glb#Animation0"),
                         Duration::from_secs_f32(0.2),

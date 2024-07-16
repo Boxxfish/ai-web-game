@@ -4,12 +4,7 @@ use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    agents::{Agent, PlayerAgent, PursuerAgent, NextAction},
-    configs::{LibCfgPlugin, VisualizerPlugin},
-    gridworld::{LevelLayout, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE},
-    observer::{Observable, Observer},
-    observations::fill_tri_half,
-    world_objs::NoiseSource,
+    agents::{Agent, NextAction, PlayerAgent, PursuerAgent}, configs::{LibCfgPlugin, VisualizerPlugin}, gridworld::{LevelLayout, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE}, observations::fill_tri_half, observer::{Observable, Observer}, screens::ScreenState, world_objs::NoiseSource
 };
 
 /// Describes an observable object.
@@ -78,7 +73,7 @@ pub struct AgentState {
     #[pyo3(get)]
     pub vm_data: HashMap<u64, VMData>,
     #[pyo3(get)]
-    pub visible_cells: Vec<bool>,
+    pub visible_cells: Vec<f32>,
 }
 
 /// Contains the state of the game for a single frame.
@@ -143,6 +138,7 @@ impl GameWrapper {
     ) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
+        app.insert_state(ScreenState::Game);
         app.insert_resource(LevelLayout::random(
             DEFAULT_LEVEL_SIZE,
             wall_prob,
@@ -210,7 +206,7 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
 }
 
 /// Queries the world for an agent with the provided component and returns an `AgentState`.
-fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
+fn get_agent_state<T: Component>(world: &mut World, size: usize) -> AgentState {
     let (agent, &xform, observer) = world
         .query_filtered::<(&Agent, &GlobalTransform, &Observer), With<T>>()
         .single(world);
@@ -244,7 +240,8 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
         .collect();
 
     // Compute intersection of agent visible area with grid
-    let mut visible_cells = vec![false; DEFAULT_LEVEL_SIZE * DEFAULT_LEVEL_SIZE];
+    let visible_scale = 4;
+    let mut visible_cells_ss = vec![false; (size * visible_scale).pow(2)];
     for tri in &vis_mesh {
         let mut points = tri.to_vec();
         points.sort_by(|p1, p2| p1.y.total_cmp(&p2.y)); // 2 is top, 0 is bottom
@@ -258,21 +255,36 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
         mid_points.sort_by(|p1, p2| p1.x.total_cmp(&p2.x));
 
         fill_tri_half(
-            &mut visible_cells,
+            &mut visible_cells_ss,
             mid_points[0],
             mid_points[1],
             points[2],
             true,
-            DEFAULT_LEVEL_SIZE,
+            size * visible_scale,
+            GRID_CELL_SIZE / visible_scale as f32,
         );
         fill_tri_half(
-            &mut visible_cells,
+            &mut visible_cells_ss,
             mid_points[0],
             mid_points[1],
             points[0],
             false,
-            DEFAULT_LEVEL_SIZE,
+            size * visible_scale,
+            GRID_CELL_SIZE / visible_scale as f32,
         );
+    }
+    let mut visible_cells = vec![0.; size.pow(2)];
+    for y in 0..size {
+        for x in 0..size {
+            let mut value = 0.;
+            for sy in 0..visible_scale {
+                for sx in 0..visible_scale {
+                    value += visible_cells_ss[(y * visible_scale + sy) * (size * visible_scale)
+                        + (x * visible_scale + sx)] as u8 as f32;
+                }
+            }
+            visible_cells[y * size + x] = value / visible_scale.pow(2) as f32;
+        }
     }
 
     AgentState {
@@ -288,8 +300,9 @@ fn get_agent_state<T: Component>(world: &mut World) -> AgentState {
 impl GameWrapper {
     fn get_state(&mut self) -> GameState {
         let world = &mut self.app.world;
-        let player = get_agent_state::<PlayerAgent>(world);
-        let pursuer = get_agent_state::<PursuerAgent>(world);
+        let size = world.get_resource::<LevelLayout>().unwrap().size;
+        let player = get_agent_state::<PlayerAgent>(world, size);
+        let pursuer = get_agent_state::<PursuerAgent>(world, size);
 
         // Record all observable items
         let mut observables = world.query_filtered::<(

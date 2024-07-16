@@ -56,7 +56,9 @@ class BayesFilter:
         """
         Given an agent's observations, returns the new location probabilities.
         """
-        self.belief = self.predict(self.belief)
+        walls = np.array(game_state.walls).astype(float)
+        walls = walls.reshape([game_state.level_size, game_state.level_size])
+        self.belief = self.predict(self.belief, walls)
         lkhd = self.update_fn(
             obs,
             self.use_objs,
@@ -71,11 +73,11 @@ class BayesFilter:
         self.belief = self.belief / self.belief.sum()
         return self.belief
 
-    def predict(self, belief: np.ndarray) -> np.ndarray:
-        kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
-        kernel = kernel / kernel.sum()
+    def predict(self, belief: np.ndarray, walls: np.ndarray) -> np.ndarray:
+        kernel = np.array([[0.25, 1, 0.25], [1, 1, 1], [0.25, 1, 0.25]])
         belief = signal.convolve2d(belief, kernel, mode="same")
-        return belief
+        denom = signal.convolve2d(1.0 - walls, kernel, mode="same") + 0.001
+        return belief / denom
 
 
 def manual_update(
@@ -107,16 +109,15 @@ def manual_update(
             agent_lkhd = 1.0
             if player_vis_grid is not None:
                 if player_vis_grid != (x, y):
-                    agent_lkhd = 0.01
+                    agent_lkhd = 0.0
             else:
                 # Cells within vision have 0% chance of agent being there
-                agent_lkhd = 1 - int(
-                    agent_state.visible_cells[y * game_state.level_size + x]
+                agent_lkhd = (
+                    1.0 - agent_state.visible_cells[y * game_state.level_size + x]
                 )
                 # All other cells are equally probable
-                agent_lkhd = agent_lkhd * (
-                    1.0 / (size**2 - sum(agent_state.visible_cells))
-                )
+                agent_lkhd = agent_lkhd / (size**2 - sum(agent_state.visible_cells))
+
             lkhd[y][x] = grid_lkhd * agent_lkhd
     return lkhd
 
@@ -203,7 +204,9 @@ if __name__ == "__main__":
     parser.add_argument("--lkhd-min", type=float, default=0.0)
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     parser.add_argument("--start-gt", default=False, action="store_true")
-    parser.add_argument("--player-sees-visible-cells", default=False, action="store_true")
+    parser.add_argument(
+        "--player-sees-visible-cells", default=False, action="store_true"
+    )
     args = parser.parse_args()
 
     def heuristic_policy(
@@ -226,7 +229,11 @@ if __name__ == "__main__":
         if args.player_sees_visible_cells:
             channels = 10
         p_net = PolicyNet(
-            channels, 8, action_count, use_pos, (MAX_OBJS, OBJ_DIM) if use_objs else None
+            channels,
+            8,
+            action_count,
+            use_pos,
+            (MAX_OBJS, OBJ_DIM) if use_objs else None,
         )
         load_model(p_net, chkpt_path)
 
@@ -268,7 +275,14 @@ if __name__ == "__main__":
         update_fn = gt_update
     else:
         update_fn = manual_update
-    b_filter = BayesFilter(env.game_state.level_size, CELL_SIZE, update_fn, args.use_objs, True, args.lkhd_min)
+    b_filter = BayesFilter(
+        env.game_state.level_size,
+        CELL_SIZE,
+        update_fn,
+        args.use_objs,
+        True,
+        args.lkhd_min,
+    )
     if args.start_gt:
         b_filter.belief = np.zeros(b_filter.belief.shape)
         play_pos = env.game_state.player.pos
@@ -299,7 +313,9 @@ if __name__ == "__main__":
         game_state = env.game_state
         assert game_state is not None
         agent_state = game_state.pursuer
-        extra_channel = torch.zeros([game_state.level_size, game_state.level_size], dtype=torch.float)
+        extra_channel = torch.zeros(
+            [game_state.level_size, game_state.level_size], dtype=torch.float
+        )
         if args.insert_visible_cells:
             visible_cells = agent_state.visible_cells
             extra_channel = torch.tensor(visible_cells, dtype=torch.float).reshape(
@@ -327,5 +343,9 @@ if __name__ == "__main__":
         probs = b_filter.localize(filter_obs, game_state, agent_state)
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)
-        rr.log("filter/manual_measurement_likelihood", rr.Tensor(manual_lkhd), timeless=False)
+        rr.log(
+            "filter/manual_measurement_likelihood",
+            rr.Tensor(manual_lkhd),
+            timeless=False,
+        )
         rr.log("filter/filter_obs", rr.Tensor(filter_obs[0]), timeless=False)
