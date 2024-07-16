@@ -74,6 +74,8 @@ pub struct LoadedLevelData {
     pub objects: Vec<LoadedObjData>,
     pub key_pos: (usize, usize),
     pub door_pos: (usize, usize),
+    pub player_start: (usize, usize),
+    pub pursuer_start: (usize, usize),
 }
 
 /// Indicates that a level should be loaded.
@@ -144,6 +146,8 @@ fn load_level(
                         objects: level.objects.clone(),
                         key_pos: Some(level.key_pos),
                         door_pos: Some(level.door_pos),
+                        player_start: Some(level.player_start),
+                        pursuer_start: Some(level.pursuer_start),
                     });
                     commands.remove_resource::<LevelLoader>();
                 }
@@ -165,6 +169,8 @@ pub struct LevelLayout {
     pub objects: Vec<LoadedObjData>,
     pub key_pos: Option<(usize, usize)>,
     pub door_pos: Option<(usize, usize)>,
+    pub player_start: Option<(usize, usize)>,
+    pub pursuer_start: Option<(usize, usize)>,
 }
 
 impl LevelLayout {
@@ -179,6 +185,8 @@ impl LevelLayout {
             objects: Vec::new(),
             key_pos: None,
             door_pos: None,
+            player_start: None,
+            pursuer_start: None,
         };
         let mut objects = Vec::new();
         if max_items > 0 {
@@ -200,6 +208,8 @@ impl LevelLayout {
             objects,
             key_pos: None,
             door_pos: None,
+            player_start: None,
+            pursuer_start: None,
         }
     }
 
@@ -249,7 +259,10 @@ fn setup_entities(
                 ..default()
             });
 
-            let pursuer_tile_idx = level.get_empty();
+            let pursuer_tile_idx = match &level.pursuer_start {
+                Some((x, y)) => y * level.size + x,
+                None => level.get_empty(),
+            };
             p.spawn((
                 PursuerAgent::default(),
                 Agent::default(),
@@ -282,7 +295,10 @@ fn setup_entities(
                     ));
                 }
             });
-            let player_tile_idx = level.get_empty();
+            let player_tile_idx = match &level.player_start {
+                Some((x, y)) => y * level.size + x,
+                None => level.get_empty(),
+            };
             p.spawn((
                 PlayerAgent,
                 Agent::default(),
