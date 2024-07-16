@@ -35,5 +35,7 @@
         }
     ],
     "key_pos": [6, 4],
-    "door_pos": [2, 7]
+    "door_pos": [2, 7],
+    "player_start": [2, 3],
+    "pursuer_start": [5, 4]
 }
