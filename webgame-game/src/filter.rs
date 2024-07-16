@@ -77,28 +77,36 @@ fn init_filter_net(mut commands: Commands) {
     commands.spawn((BayesFilter::new(8), ManualFilter));
 }
 
-fn apply_motion(probs: &Tensor) -> candle_core::Result<Tensor> {
-    let kernel = (Tensor::from_slice(
-        &[0., 1., 0., 1., 1., 1., 0., 1., 0.],
+fn apply_motion(probs: &Tensor, walls: &[bool], size: usize) -> candle_core::Result<Tensor> {
+    let walls = Tensor::from_slice(
+        &walls.iter().map(|b| *b as u8 as f32).collect::<Vec<_>>(),
+        &[walls.len()],
+        &Device::Cpu,
+    )?
+    .reshape(&[size, size])?;
+    let kernel = Tensor::from_slice(
+        &[0.25, 1., 0.25, 1., 1., 1., 0.25, 1., 0.25],
         &[1, 3, 3],
         &Device::Cpu,
-    )
-    .unwrap()
-        / 5.)
-        .unwrap()
-        .reshape(&[1, 1, 3, 3])
-        .unwrap()
-        .to_dtype(DType::F32)
-        .unwrap();
-    let probs = probs
+    )?
+    .reshape(&[1, 1, 3, 3])?
+    .to_dtype(DType::F32)?;
+    // Normalize by number of neighbors
+    let denom = ((1. - walls)?
         .unsqueeze(0)?
         .unsqueeze(0)?
         .conv2d(&kernel, 1, 1, 1, 1)?
-        .squeeze(0)
-        .unwrap()
-        .squeeze(0)
-        .unwrap();
-    &probs / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64
+        .squeeze(0)?
+        .squeeze(0)?
+        + 0.001)?;
+    let probs = (probs
+        .unsqueeze(0)?
+        .unsqueeze(0)?
+        .conv2d(&kernel, 1, 1, 1, 1)?
+        .squeeze(0)?
+        .squeeze(0)?
+        / denom)?;
+    Ok(probs)
 }
 
 /// Updates filter probabilities for learned filters.
@@ -106,6 +114,7 @@ fn update_filter_learned(
     net_query: Query<&NNWrapper<MeasureModel>>,
     mut filter_query: Query<&mut BayesFilter, With<LearnedFilter>>,
     pursuer_query: Query<&PursuerAgent>,
+    level: Res<LevelLayout>,
 ) {
     for mut filter in filter_query.iter_mut() {
         let model = net_query.single();
@@ -114,7 +123,7 @@ fn update_filter_learned(
                 if pursuer.obs_timer.just_finished() {
                     if let Some((grid, objs, objs_attn)) = pursuer.observations.as_ref() {
                         // Apply motion model
-                        let probs = apply_motion(&filter.probs).unwrap();
+                        let probs = apply_motion(&filter.probs, &level.walls, level.size).unwrap();
 
                         // Apply measurement model
                         let lkhd = net
@@ -158,7 +167,7 @@ fn update_filter_manual(
             if pursuer.obs_timer.just_finished() {
                 if let Some(agent_state) = &pursuer.agent_state {
                     // Apply motion model
-                    let probs = apply_motion(&filter.probs).unwrap();
+                    let probs = apply_motion(&filter.probs, &level.walls, level.size).unwrap();
 
                     // Apply measurement model
                     let size = level.size;
@@ -174,21 +183,14 @@ fn update_filter_manual(
                                     let player_pos =
                                         pos_to_grid(player_pos.x, player_pos.y, GRID_CELL_SIZE);
                                     if player_pos != (x, y) {
-                                        agent_lkhd = 0.01;
+                                        agent_lkhd = 0.;
                                     }
                                 } else {
                                     // Cells within vision have 0% chance of agent being there
-                                    agent_lkhd =
-                                        (!agent_state.visible_cells[y * size + x]) as u8 as f32;
+                                    agent_lkhd = 1. - agent_state.visible_cells[y * size + x];
                                     // All other cells are equally probable
-                                    agent_lkhd *= 1.
-                                        / (size.pow(2)
-                                            - agent_state
-                                                .visible_cells
-                                                .iter()
-                                                .map(|x| *x as usize)
-                                                .sum::<usize>())
-                                            as f32;
+                                    agent_lkhd /=
+                                        size.pow(2) as f32 - agent_state.visible_cells.iter().sum::<f32>();
                                 }
                             }
                             lkhd[y][x] = grid_lkhd * agent_lkhd;
@@ -198,8 +200,8 @@ fn update_filter_manual(
                         &lkhd.into_iter().flatten().collect::<Vec<f32>>(),
                         &[size, size],
                         &Device::Cpu,
-                    );
-                    let probs = (probs * lkhd).unwrap();
+                    ).unwrap();
+                    let probs = (&probs * &lkhd).unwrap();
                     let probs = (&probs
                         / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)
                         .unwrap();

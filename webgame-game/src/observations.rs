@@ -4,9 +4,9 @@ use bevy::prelude::*;
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
+    agents::{Agent, PursuerAgent},
     gridworld::{LevelLayout, GRID_CELL_SIZE},
     observer::{Observable, Observer, VMSeenData},
-    agents::{Agent, PursuerAgent},
     world_objs::NoiseSource,
 };
 
@@ -140,7 +140,7 @@ pub struct AgentState {
     pub observing: Vec<Entity>,
     pub listening: Vec<Entity>,
     pub vm_data: HashMap<Entity, VMSeenData>,
-    pub visible_cells: Vec<bool>,
+    pub visible_cells: Vec<f32>,
 }
 
 /// Encodes information from the world into an agent's state.
@@ -171,8 +171,10 @@ pub fn encode_state(
         .collect();
     let size = level.size;
 
-    // Compute intersection of agent visible area with grid
-    let mut visible_cells = vec![false; size * size];
+    // Compute intersection of agent visible area with grid.
+    // We need to supersample to handle edges.
+    let visible_scale = 4;
+    let mut visible_cells_ss = vec![false; (size * visible_scale).pow(2)];
     for tri in &vis_mesh {
         let mut points = tri.to_vec();
         points.sort_by(|p1, p2| p1.y.total_cmp(&p2.y)); // 2 is top, 0 is bottom
@@ -186,21 +188,36 @@ pub fn encode_state(
         mid_points.sort_by(|p1, p2| p1.x.total_cmp(&p2.x));
 
         fill_tri_half(
-            &mut visible_cells,
+            &mut visible_cells_ss,
             mid_points[0],
             mid_points[1],
             points[2],
             true,
-            size,
+            size * visible_scale,
+            GRID_CELL_SIZE / visible_scale as f32,
         );
         fill_tri_half(
-            &mut visible_cells,
+            &mut visible_cells_ss,
             mid_points[0],
             mid_points[1],
             points[0],
             false,
-            size,
+            size * visible_scale,
+            GRID_CELL_SIZE / visible_scale as f32,
         );
+    }
+    let mut visible_cells = vec![0.; size.pow(2)];
+    for y in 0..size {
+        for x in 0..size {
+            let mut value = 0.;
+            for sy in 0..visible_scale {
+                for sx in 0..visible_scale {
+                    value += visible_cells_ss[(y * visible_scale + sy) * (size * visible_scale)
+                        + (x * visible_scale + sx)] as u8 as f32;
+                }
+            }
+            visible_cells[y * size + x] = value / visible_scale.pow(2) as f32;
+        }
     }
 
     AgentState {
@@ -221,10 +238,11 @@ pub fn fill_tri_half(
     other: Vec2,
     is_top: bool,
     size: usize,
+    cell_size: f32,
 ) {
     let slope1 = (other.x - mid1.x) / (other.y - mid1.y);
     let slope2 = (other.x - mid2.x) / (other.y - mid2.y);
-    let dy = GRID_CELL_SIZE;
+    let dy = cell_size;
     let (mut last1, mut last2) = if is_top { (mid1, mid2) } else { (other, other) };
     for _ in 0..((if is_top {
         other.y - mid1.y
@@ -233,10 +251,8 @@ pub fn fill_tri_half(
     } / dy)
         .ceil() as u32)
     {
-        let y = ((last1.y / GRID_CELL_SIZE).round() as usize).clamp(0, size - 1);
-        for x in ((last1.x / GRID_CELL_SIZE).floor() as usize)
-            ..((last2.x / GRID_CELL_SIZE).ceil() as usize)
-        {
+        let y = ((last1.y / cell_size).round() as usize).clamp(0, size - 1);
+        for x in ((last1.x / cell_size).floor() as usize)..((last2.x / cell_size).ceil() as usize) {
             visible_cells[y * size + x.clamp(0, size - 1)] = true;
         }
 

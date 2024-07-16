@@ -72,7 +72,7 @@ impl Default for PursuerAgent {
     fn default() -> Self {
         Self {
             observations: None,
-            obs_timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+            obs_timer: Timer::from_seconds(0.4, TimerMode::Repeating),
             agent_state: None,
         }
     }
