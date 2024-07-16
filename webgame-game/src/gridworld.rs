@@ -534,16 +534,14 @@ fn setup_entities(
                 let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
                 let mut child_builder = p.spawn((
                     Key,
-                    TransformBundle::from_transform(
-                        Transform::from_translation(pos)
-                            .with_rotation(Quat::from_rotation_x(PI / 4.)),
-                    ),
+                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 4.))),
                     VisibilityBundle::default(),
                 ));
                 child_builder.with_children(|p| {
                     p.spawn(SceneBundle {
                         scene: asset_server.load("key.glb#Scene0"),
-                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        transform: Transform::default()
+                            .with_scale(Vec3::ONE * GRID_CELL_SIZE),
                         ..default()
                     });
                 });

@@ -45,7 +45,7 @@ pub struct IsPlayable;
 
 impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(ScreenState::Game)
+        app.insert_state(ScreenState::Loading)
             .insert_resource(IsPlayable)
             .insert_resource(AssetMetaCheck::Never)
             .insert_resource(ClearColor(Color::BLACK))
@@ -115,7 +115,8 @@ impl Plugin for LibCfgPlugin {
                 substeps: 10,
             },
             ..default()
-        });
+        })
+        .insert_state(ScreenState::Game);
     }
 }
 
