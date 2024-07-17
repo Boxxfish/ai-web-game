@@ -252,7 +252,7 @@ fn setup_entities(
             // Add light
             p.spawn(DirectionalLightBundle {
                 directional_light: DirectionalLight {
-                    illuminance: 2000.,
+                    illuminance: 6000.,
                     ..default()
                 },
                 transform: Transform::from_rotation(Quat::from_rotation_x(PI / 4.)),
