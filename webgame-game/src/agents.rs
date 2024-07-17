@@ -288,7 +288,7 @@ pub fn move_agents(
 }
 
 /// Returns the entity at this path.
-fn get_entity(
+pub fn get_entity(
     parent: &Entity,
     path: &[&str],
     child_query: &Query<(Entity, Option<&Name>, Option<&Children>)>,
@@ -299,6 +299,7 @@ fn get_entity(
     if let Ok((_, _, Some(children))) = child_query.get(*parent) {
         for child in children {
             let (_, name, _) = child_query.get(*child).unwrap();
+            info!("{:?}, {:?}", name, path);
             if (name.is_none() && path[0].is_empty()) || (name.unwrap().as_str() == path[0]) {
                 let e = get_entity(child, &path[1..], child_query);
                 if e.is_some() {

@@ -1,7 +1,7 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, time::Duration};
 
 use crate::{
-    agents::{Agent, NextAction, PlayerAgent},
+    agents::{get_entity, Agent, NextAction, PlayerAgent},
     gridworld::GRID_CELL_SIZE,
     observer::Wall,
 };
@@ -82,10 +82,7 @@ pub struct PickupEffect {
 
 impl PickupEffect {
     pub fn from_color(color: Color) -> Self {
-        Self {
-            color,
-            ..default()
-        }
+        Self { color, ..default() }
     }
 }
 
@@ -176,6 +173,9 @@ fn handle_key_touch(
     mut door_query: Query<(Entity, &mut Door)>,
     door_vis_query: Query<Entity, With<DoorVisual>>,
     mut commands: Commands,
+    mut anim_query: Query<&mut AnimationPlayer>,
+    child_query: Query<(Entity, Option<&Name>, Option<&Children>)>,
+    asset_server: Res<AssetServer>,
 ) {
     for player_xform in player_query.iter() {
         let player_pos = player_xform.translation().xy();
@@ -192,7 +192,13 @@ fn handle_key_touch(
                     commands.entity(door_e).remove::<(Wall, Collider)>();
                 }
                 for vis_e in door_vis_query.iter() {
-                    commands.entity(vis_e).despawn_recursive();
+                    let anim_e =
+                        get_entity(&vis_e, &["", "doorway(Clone)"], &child_query).unwrap();
+                    let mut anim = anim_query.get_mut(anim_e).unwrap();
+                    anim.play_with_transition(
+                        asset_server.load("furniture/doorway.glb#Animation0"),
+                        Duration::from_secs_f32(0.0),
+                    );
                 }
             }
         }
