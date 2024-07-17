@@ -19,14 +19,7 @@ impl Plugin for ObserverPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                update_observers.after(move_agents),
-                update_vm_data,
-                add_vis_cones,
-                draw_observer_areas
-                    .after(update_observers)
-                    .after(add_vis_cones),
-            ),
+            (update_observers.after(move_agents), update_vm_data),
         );
     }
 }
@@ -35,7 +28,17 @@ impl Plugin for ObserverPlugin {
 pub struct ObserverPlayPlugin;
 
 impl Plugin for ObserverPlayPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                add_vis_cones,
+                draw_observer_areas
+                    .after(update_observers)
+                    .after(add_vis_cones),
+            ),
+        );
+    }
 }
 
 /// Stores visual marker data for an observer
