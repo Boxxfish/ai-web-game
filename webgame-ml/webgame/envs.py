@@ -108,10 +108,9 @@ class GameEnv(pettingzoo.ParallelEnv):
             "player": -float(seen_player),
             "pursuer": float(seen_player),
         }
-        done = obs["pursuer"][0][4] > 0.5
         dones = {
-            "player": done,
-            "pursuer": done,
+            "player": seen_player,
+            "pursuer": seen_player,
         }
         truncs = {
             "player": trunc,
