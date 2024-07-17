@@ -112,13 +112,13 @@ pub fn encode_obs(
         attn_mask[i] = 1.;
     }
     let filter_probs = Tensor::zeros(walls.shape(), DType::F32, &device)?;
-    let grid = Tensor::stack(&[walls, filter_probs], 0)?;
+    let grid = Tensor::stack(&[&walls, &filter_probs, &Tensor::zeros(walls.shape(), DType::F32, &device).unwrap()], 0)?;
 
     // Combine scalar observations with grid
     let scalar_grid = Tensor::from_slice(&obs_vec, &[obs_vec.len()], &device)?
         .reshape(&[7, 1, 1])?
         .repeat(&[1, level.size, level.size])?;
-    let grid = Tensor::cat(&[scalar_grid, grid], 0)?;
+    let grid = Tensor::cat(&[&scalar_grid, &grid], 0)?;
 
     Ok((
         grid,

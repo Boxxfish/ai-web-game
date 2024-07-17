@@ -86,7 +86,7 @@ fn handle_fade_evs(
     }
 }
 
-const TRANSITION_SECS: f32 = 0.5;
+const TRANSITION_SECS: f32 = 0.3;
 const MIN_TRANSITION: f32 = 0.001;
 
 /// Updates the screen transition.

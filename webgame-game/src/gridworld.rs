@@ -20,7 +20,7 @@ use crate::{
     filter::BayesFilter,
     observer::{DebugObserver, Observable, Observer, Wall},
     screens::GameScreen,
-    world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
+    world_objs::{Door, DoorVisual, Key, NoiseSource, PickupEffect, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -252,7 +252,7 @@ fn setup_entities(
             // Add light
             p.spawn(DirectionalLightBundle {
                 directional_light: DirectionalLight {
-                    illuminance: 2000.,
+                    illuminance: 6000.,
                     ..default()
                 },
                 transform: Transform::from_rotation(Quat::from_rotation_x(PI / 4.)),
@@ -616,7 +616,10 @@ fn player_reached_door(
                 );
                 if door_pos == player_pos {
                     commands.remove_resource::<ShouldRun>();
-                    commands.entity(player_e).despawn_recursive();
+                    commands
+                        .entity(player_e)
+                        .insert(PickupEffect::from_color(Color::GREEN))
+                        .remove::<PlayerAgent>();
                     ev_game_end.send(GameEndEvent { player_won: true });
                 }
             }
@@ -639,7 +642,10 @@ fn pursuer_sees_player(
                 && (player_pos - pursuer_pos).length_squared() < (2. * GRID_CELL_SIZE).powi(2)
             {
                 commands.remove_resource::<ShouldRun>();
-                commands.entity(player_e).despawn_recursive();
+                commands
+                    .entity(player_e)
+                    .insert(PickupEffect::from_color(Color::RED))
+                    .remove::<PlayerAgent>();
                 ev_game_end.send(GameEndEvent { player_won: false });
             }
         }

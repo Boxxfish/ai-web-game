@@ -209,6 +209,7 @@ fn set_pursuer_action(
                         .unwrap()
                         .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
                     .unwrap();
+                info!("{:?}", probs.to_vec1::<f32>().unwrap());
                     let index =
                         rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap())
                             .unwrap();
@@ -288,7 +289,7 @@ pub fn move_agents(
 }
 
 /// Returns the entity at this path.
-fn get_entity(
+pub fn get_entity(
     parent: &Entity,
     path: &[&str],
     child_query: &Query<(Entity, Option<&Name>, Option<&Children>)>,

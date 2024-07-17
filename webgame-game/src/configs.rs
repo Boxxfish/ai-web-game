@@ -12,7 +12,7 @@ use bevy::{
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::{ScreenState, ScreensPlayPlugin}, ui::UIPlugin, world_objs::WorldObjPlugin
+    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::{ScreenState, ScreensPlayPlugin}, ui::UIPlugin, world_objs::{WorldObjPlayPlugin, WorldObjPlugin}
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -45,7 +45,7 @@ pub struct IsPlayable;
 
 impl Plugin for PlayablePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(ScreenState::Game)
+        app.insert_state(ScreenState::Loading)
             .insert_resource(IsPlayable)
             .insert_resource(AssetMetaCheck::Never)
             .insert_resource(ClearColor(Color::BLACK))
@@ -58,6 +58,7 @@ impl Plugin for PlayablePlugin {
                 ..default()
             }))
             .add_plugins((
+                WorldObjPlayPlugin,
                 GridworldPlayPlugin,
                 ObserverPlayPlugin,
                 FilterPlayPlugin,
@@ -114,7 +115,8 @@ impl Plugin for LibCfgPlugin {
                 substeps: 10,
             },
             ..default()
-        });
+        })
+        .insert_state(ScreenState::Game);
     }
 }
 

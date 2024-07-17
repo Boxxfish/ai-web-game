@@ -1,11 +1,9 @@
-use std::f32::consts::PI;
-
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
     gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     models::{MeasureModel, PolicyNet},
-    net::{NNWrapper, SafeTensorsData},
+    net::NNWrapper,
     ui::{
         input_prompt::{InputPrompt, InputPromptBundle, InputType},
         menu_button::{MenuButtonBundle, MenuButtonPressedEvent},
@@ -18,8 +16,7 @@ pub struct ScreensPlayPlugin;
 
 impl Plugin for ScreensPlayPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(Startup, init_ui)
+        app.add_systems(Startup, init_ui)
             .add_systems(OnEnter(ScreenState::Loading), init_loading)
             .add_systems(OnExit(ScreenState::Loading), destroy_loading)
             .add_systems(
@@ -120,7 +117,6 @@ struct LoadingAssets {
 
 fn init_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load(FONT_REGULAR);
-    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
     commands
         .spawn((
             LoadingScreen,
@@ -191,13 +187,8 @@ fn check_assets_loaded(
     }
 }
 
-fn destroy_loading(
-    mut commands: Commands,
-    screen_query: Query<Entity, With<LoadingScreen>>,
-    cam_query: Query<Entity, With<Camera2d>>,
-) {
+fn destroy_loading(mut commands: Commands, screen_query: Query<Entity, With<LoadingScreen>>) {
     commands.entity(screen_query.single()).despawn_recursive();
-    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 /// Denotes the title screen.
@@ -218,6 +209,24 @@ struct TransitionNextState<T>(pub T);
 /// Initializes UI elements that persist across scenes.
 fn init_ui(mut commands: Commands) {
     commands.spawn(ScreenTransitionBundle::default());
+    let cam_angle = (20.0_f32).to_radians();
+    let cam_dist = 700.;
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_translation(Vec3::new(
+                GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
+                -cam_angle.sin() * cam_dist + GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
+                cam_angle.cos() * cam_dist,
+            ))
+            .with_rotation(Quat::from_rotation_x(cam_angle)),
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: 0.4,
+                ..default()
+            }),
+            ..default()
+        },
+        IsDefaultUiCamera,
+    ));
 }
 
 fn init_title_screen(
@@ -228,7 +237,6 @@ fn init_title_screen(
     let font_bold = asset_server.load(FONT_BOLD);
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 
-    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
     commands
         .spawn((
             TitleScreen,
@@ -327,13 +335,8 @@ fn init_title_screen(
         });
 }
 
-fn destroy_title_screen(
-    mut commands: Commands,
-    screen_query: Query<Entity, With<TitleScreen>>,
-    cam_query: Query<Entity, With<Camera2d>>,
-) {
+fn destroy_title_screen(mut commands: Commands, screen_query: Query<Entity, With<TitleScreen>>) {
     commands.entity(screen_query.single()).despawn_recursive();
-    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 fn handle_title_screen_btns(
@@ -376,25 +379,6 @@ enum GameAction {
 }
 
 fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
-    let cam_angle = (20.0_f32).to_radians();
-    let cam_dist = 700.;
-    commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(
-                GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
-                -cam_angle.sin() * cam_dist + GRID_CELL_SIZE * (((8 + 1) / 2) as f32),
-                cam_angle.cos() * cam_dist,
-            ))
-            .with_rotation(Quat::from_rotation_x(cam_angle)),
-            projection: Projection::Perspective(PerspectiveProjection {
-                fov: 0.4,
-                ..default()
-            }),
-            ..default()
-        },
-        IsDefaultUiCamera,
-    ));
-
     create_game_ui(&mut commands);
 
     ev_start_fade.send(StartFadeEvent { fade_in: true });
@@ -469,17 +453,12 @@ fn create_game_ui(commands: &mut Commands) {
         });
 }
 
-fn destroy_game(
-    mut commands: Commands,
-    screen_query: Query<Entity, With<GameScreen>>,
-    cam_query: Query<Entity, With<Camera3d>>,
-) {
+fn destroy_game(mut commands: Commands, screen_query: Query<Entity, With<GameScreen>>) {
     for e in screen_query.iter() {
         commands.entity(e).despawn_recursive();
     }
     commands.remove_resource::<ShouldRun>();
     commands.remove_resource::<LevelLayout>();
-    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 fn handle_game_btns(
@@ -556,7 +535,6 @@ fn init_level_select(
 ) {
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 
-    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
     commands
         .spawn((
             LevelSelectScreen,
@@ -639,10 +617,8 @@ fn init_level_select(
 fn destroy_level_select(
     mut commands: Commands,
     screen_query: Query<Entity, With<LevelSelectScreen>>,
-    cam_query: Query<Entity, With<Camera2d>>,
 ) {
     commands.entity(screen_query.single()).despawn_recursive();
-    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 fn handle_level_select_btns(
@@ -690,7 +666,6 @@ fn init_about(
 ) {
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 
-    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
     commands
         .spawn((
             AboutScreen,
@@ -791,10 +766,8 @@ fn init_about(
 fn destroy_about(
     mut commands: Commands,
     screen_query: Query<Entity, With<AboutScreen>>,
-    cam_query: Query<Entity, With<Camera2d>>,
 ) {
     commands.entity(screen_query.single()).despawn_recursive();
-    commands.entity(cam_query.single()).despawn_recursive();
 }
 
 fn handle_about_btns(
