@@ -209,6 +209,7 @@ fn set_pursuer_action(
                         .unwrap()
                         .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
                     .unwrap();
+                info!("{:?}", probs.to_vec1::<f32>().unwrap());
                     let index =
                         rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap())
                             .unwrap();
