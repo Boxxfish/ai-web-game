@@ -4,7 +4,13 @@ use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    agents::{Agent, NextAction, PlayerAgent, PursuerAgent}, configs::{LibCfgPlugin, VisualizerPlugin}, gridworld::{LevelLayout, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE}, observations::fill_tri_half, observer::{Observable, Observer}, screens::ScreenState, world_objs::NoiseSource
+    agents::{Agent, NextAction, PlayerAgent, PursuerAgent},
+    configs::{LibCfgPlugin, VisualizerPlugin},
+    gridworld::{LevelLayout, ResetEvent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE},
+    observations::fill_tri_half,
+    observer::{Observable, Observer},
+    screens::ScreenState,
+    world_objs::NoiseSource,
 };
 
 /// Describes an observable object.
@@ -174,14 +180,15 @@ impl GameWrapper {
     }
 
     pub fn reset(&mut self) -> GameState {
-        self.app.world.send_event(AppExit);
-        self.app.run();
-        *self = Self::new(
-            self.use_objs,
-            self.wall_prob,
-            self.visualize,
-            self.recording_id.clone(),
-        );
+        self.app.world.send_event(ResetEvent {
+            level: LevelLayout::random(
+                DEFAULT_LEVEL_SIZE,
+                self.wall_prob,
+                if self.use_objs { DEFAULT_LEVEL_SIZE } else { 0 },
+            ),
+        });
+        self.app.update();
+        self.app.update();
         self.get_state()
     }
 }

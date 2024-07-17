@@ -763,10 +763,7 @@ fn init_about(
     });
 }
 
-fn destroy_about(
-    mut commands: Commands,
-    screen_query: Query<Entity, With<AboutScreen>>,
-) {
+fn destroy_about(mut commands: Commands, screen_query: Query<Entity, With<AboutScreen>>) {
     commands.entity(screen_query.single()).despawn_recursive();
 }
 
