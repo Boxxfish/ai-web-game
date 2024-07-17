@@ -20,7 +20,7 @@ use crate::{
     filter::BayesFilter,
     observer::{DebugObserver, Observable, Observer, Wall},
     screens::GameScreen,
-    world_objs::{Door, DoorVisual, Key, NoiseSource, VisualMarker},
+    world_objs::{Door, DoorVisual, Key, NoiseSource, PickupEffect, VisualMarker},
 };
 
 /// Plugin for basic game features, such as moving around and not going through walls.
@@ -534,14 +534,16 @@ fn setup_entities(
                 let pos = Vec3::new(x as f32, (level.size - y - 1) as f32, 0.) * GRID_CELL_SIZE;
                 let mut child_builder = p.spawn((
                     Key,
-                    TransformBundle::from_transform(Transform::from_translation(pos).with_rotation(Quat::from_rotation_x(PI / 4.))),
+                    TransformBundle::from_transform(
+                        Transform::from_translation(pos)
+                            .with_rotation(Quat::from_rotation_x(PI / 4.)),
+                    ),
                     VisibilityBundle::default(),
                 ));
                 child_builder.with_children(|p| {
                     p.spawn(SceneBundle {
                         scene: asset_server.load("key.glb#Scene0"),
-                        transform: Transform::default()
-                            .with_scale(Vec3::ONE * GRID_CELL_SIZE),
+                        transform: Transform::default().with_scale(Vec3::ONE * GRID_CELL_SIZE),
                         ..default()
                     });
                 });
@@ -614,7 +616,10 @@ fn player_reached_door(
                 );
                 if door_pos == player_pos {
                     commands.remove_resource::<ShouldRun>();
-                    commands.entity(player_e).despawn_recursive();
+                    commands
+                        .entity(player_e)
+                        .insert(PickupEffect::from_color(Color::GREEN))
+                        .remove::<PlayerAgent>();
                     ev_game_end.send(GameEndEvent { player_won: true });
                 }
             }
@@ -637,7 +642,10 @@ fn pursuer_sees_player(
                 && (player_pos - pursuer_pos).length_squared() < (2. * GRID_CELL_SIZE).powi(2)
             {
                 commands.remove_resource::<ShouldRun>();
-                commands.entity(player_e).despawn_recursive();
+                commands
+                    .entity(player_e)
+                    .insert(PickupEffect::from_color(Color::RED))
+                    .remove::<PlayerAgent>();
                 ev_game_end.send(GameEndEvent { player_won: false });
             }
         }

@@ -56,7 +56,7 @@ fn update_particles(
         particle.vel = particle.vel + particle.acc * time.delta_seconds();
         xform.translation += particle.vel * time.delta_seconds();
         xform.scale = Vec3::splat(particle.start_size) * particle.timer.fraction_remaining();
-        
+
         particle.timer.tick(time.delta());
         if particle.timer.finished() {
             commands.entity(e).despawn();
@@ -77,6 +77,16 @@ fn init_particle_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) 
 pub struct PickupEffect {
     pub timer: Timer,
     pub spawned_particles: bool,
+    pub color: Color,
+}
+
+impl PickupEffect {
+    pub fn from_color(color: Color) -> Self {
+        Self {
+            color,
+            ..default()
+        }
+    }
 }
 
 /// How long the effect lasts.
@@ -87,6 +97,7 @@ impl Default for PickupEffect {
         Self {
             timer: Timer::from_seconds(PICKUP_EFFECT_TIME, TimerMode::Once),
             spawned_particles: false,
+            color: Color::YELLOW,
         }
     }
 }
@@ -103,7 +114,7 @@ fn update_pickup_effect(
             let pos = global_xform.translation() + Vec3::Z * 10.;
             let mut rng = rand::thread_rng();
             let material = materials.add(StandardMaterial {
-                base_color: Color::YELLOW,
+                base_color: effect.color,
                 unlit: true,
                 ..default()
             });
