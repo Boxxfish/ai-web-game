@@ -192,8 +192,7 @@ fn handle_key_touch(
                     commands.entity(door_e).remove::<(Wall, Collider)>();
                 }
                 for vis_e in door_vis_query.iter() {
-                    let anim_e =
-                        get_entity(&vis_e, &["", "doorway(Clone)"], &child_query).unwrap();
+                    let anim_e = get_entity(&vis_e, &["", "doorway(Clone)"], &child_query).unwrap();
                     let mut anim = anim_query.get_mut(anim_e).unwrap();
                     anim.play_with_transition(
                         asset_server.load("furniture/doorway.glb#Animation0"),
@@ -221,22 +220,22 @@ pub struct NoiseSource {
     pub noise_radius: f32,
     /// How close an agent has to be to activate the noise source.
     pub active_radius: f32,
-    pub activated_by: Option<Entity>,
+    pub activated_by_player: bool,
 }
 
 /// Broadcasts that an agent touched the noise source.
 fn update_noise_src(
-    agent_query: Query<(Entity, &GlobalTransform), With<Agent>>,
+    agent_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
     mut noise_query: Query<(&GlobalTransform, &mut NoiseSource)>,
 ) {
     for (obj_xform, mut noise) in noise_query.iter_mut() {
-        noise.activated_by = None;
+        noise.activated_by_player = false;
         for (agent_e, agent_xform) in agent_query.iter() {
             let agent_pos = agent_xform.translation().xy();
             let obj_pos = obj_xform.translation().xy();
             let dist_sq = (obj_pos - agent_pos).length_squared();
             if dist_sq <= noise.active_radius.powi(2) {
-                noise.activated_by = Some(agent_e);
+                noise.activated_by_player = true;
             }
         }
     }
@@ -253,7 +252,7 @@ fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform,
             noise.active_radius,
             Color::BLUE,
         );
-        if noise.activated_by.is_some() {
+        if noise.activated_by_player {
             gizmos.circle(
                 obj_pos.extend(GRID_CELL_SIZE),
                 Direction3d::Z,

@@ -214,8 +214,8 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
 
 /// Queries the world for an agent with the provided component and returns an `AgentState`.
 fn get_agent_state<T: Component>(world: &mut World, size: usize) -> AgentState {
-    let (agent, &xform, observer) = world
-        .query_filtered::<(&Agent, &GlobalTransform, &Observer), With<T>>()
+    let (agent_e, agent, &xform, observer) = world
+        .query_filtered::<(Entity, &Agent, &GlobalTransform, &Observer), With<T>>()
         .single(world);
     let vis_mesh = observer.vis_mesh.clone();
     let pos = xform.translation().xy().into();
@@ -241,7 +241,7 @@ fn get_agent_state<T: Component>(world: &mut World, size: usize) -> AgentState {
         .iter(world)
         .filter(|(_, noise_xform, noise_src)| {
             (xform.translation().xy() - noise_xform.translation().xy()).length_squared()
-                <= noise_src.noise_radius
+                <= noise_src.noise_radius.powi(2) && noise_src.activated_by_player
         })
         .map(|(e, _, _)| e.to_bits())
         .collect();

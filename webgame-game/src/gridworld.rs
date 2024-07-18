@@ -495,9 +495,9 @@ fn setup_entities(
                         },
                         LockedAxes::ROTATION_LOCKED,
                         NoiseSource {
-                            noise_radius: GRID_CELL_SIZE * 3.,
+                            noise_radius: GRID_CELL_SIZE * 8.,
                             active_radius: GRID_CELL_SIZE * 1.5,
-                            activated_by: None,
+                            activated_by_player: false,
                         },
                         VisualMarker,
                         Observable,
