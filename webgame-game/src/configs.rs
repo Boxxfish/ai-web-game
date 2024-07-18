@@ -3,16 +3,19 @@
 use std::time::Duration;
 
 use bevy::{
-    asset::AssetMetaCheck,
-    prelude::*,
-    render::{settings::WgpuSettings, RenderPlugin},
-    time::TimeUpdateStrategy,
-    winit::WinitPlugin,
+    asset::AssetMetaCheck, core::TaskPoolThreadAssignmentPolicy, prelude::*, render::{settings::WgpuSettings, RenderPlugin}, tasks::available_parallelism, time::TimeUpdateStrategy, winit::WinitPlugin
 };
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    agents::{AgentPlayPlugin, AgentPlugin}, filter::{FilterPlayPlugin, FilterPlugin}, gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader}, net::NetPlugin, observer::{ObserverPlayPlugin, ObserverPlugin}, screens::{ScreenState, ScreensPlayPlugin}, ui::UIPlugin, world_objs::{WorldObjPlayPlugin, WorldObjPlugin}
+    agents::{AgentPlayPlugin, AgentPlugin},
+    filter::{FilterPlayPlugin, FilterPlugin},
+    gridworld::{GridworldPlayPlugin, GridworldPlugin, LevelLoader},
+    net::NetPlugin,
+    observer::{ObserverPlayPlugin, ObserverPlugin},
+    screens::{ScreenState, ScreensPlayPlugin},
+    ui::UIPlugin,
+    world_objs::{WorldObjPlayPlugin, WorldObjPlugin},
 };
 
 /// Handles core functionality for our game (i.e. gameplay logic).
@@ -100,6 +103,27 @@ impl Plugin for LibCfgPlugin {
                     }
                     .into(),
                     ..default()
+                })
+                .set(TaskPoolPlugin {
+                    task_pool_options: TaskPoolOptions {
+                        min_total_threads: 1,
+                        max_total_threads: std::usize::MAX,
+                        io: TaskPoolThreadAssignmentPolicy {
+                            min_threads: 1,
+                            max_threads: 1,
+                            percent: 0.,
+                        },
+                        async_compute: TaskPoolThreadAssignmentPolicy {
+                            min_threads: 1,
+                            max_threads: 1,
+                            percent: 0.,
+                        },
+                        compute: TaskPoolThreadAssignmentPolicy {
+                            min_threads: 1,
+                            max_threads: 4,
+                            percent: 1.0,
+                        },
+                    },
                 })
                 .disable::<WinitPlugin>(),
             CoreGamePlugin,

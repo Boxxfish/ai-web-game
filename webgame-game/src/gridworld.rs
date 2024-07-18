@@ -28,7 +28,13 @@ pub struct GridworldPlugin;
 
 impl Plugin for GridworldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, setup_entities.run_if(resource_added::<LevelLayout>));
+        app.add_event::<ResetEvent>().add_systems(
+            Update,
+            (
+                reset_game,
+                setup_entities.run_if(resource_added::<LevelLayout>),
+            ),
+        );
     }
 }
 
@@ -649,5 +655,28 @@ fn pursuer_sees_player(
                 ev_game_end.send(GameEndEvent { player_won: false });
             }
         }
+    }
+}
+
+/// Resets the game.
+#[derive(Event)]
+pub struct ResetEvent {
+    pub level: LevelLayout,
+}
+
+/// Resets the game when sent.
+/// This is meant to be called during training.
+fn reset_game(
+    mut ev_reset: EventReader<ResetEvent>,
+    screen_query: Query<Entity, With<GameScreen>>,
+    mut commands: Commands,
+) {
+    for ev in ev_reset.read() {
+        for e in screen_query.iter() {
+            commands.entity(e).despawn_recursive();
+        }
+        commands.remove_resource::<LevelLayout>();
+        commands.remove_resource::<ShouldRun>();
+        commands.insert_resource(ev.level.clone());
     }
 }

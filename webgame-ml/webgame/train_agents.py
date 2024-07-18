@@ -87,6 +87,7 @@ class ValueNet(nn.Module):
             nn.Linear(256, 256),
             nn.SiLU(),
             nn.Linear(256, 1),
+            nn.Tanh()
         )
 
     def forward(

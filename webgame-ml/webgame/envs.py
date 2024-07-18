@@ -109,8 +109,8 @@ class GameEnv(pettingzoo.ParallelEnv):
             "pursuer": float(seen_player),
         }
         dones = {
-            "player": False,
-            "pursuer": False,
+            "player": seen_player,
+            "pursuer": seen_player,
         }
         truncs = {
             "player": trunc,
@@ -161,7 +161,7 @@ class GameEnv(pettingzoo.ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, _agent: str) -> gym.Space:
-        return gym.spaces.Discrete(10)
+        return gym.spaces.Discrete(9)
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, _: str) -> gym.Space:
