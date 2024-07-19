@@ -9,7 +9,7 @@ use bevy::{
 use candle_core::{DType, Device, Tensor};
 
 use crate::{
-    agents::{PlayerAgent, PursuerAgent},
+    agents::{update_observations, PlayerAgent, PursuerAgent},
     gridworld::{LevelLayout, GRID_CELL_SIZE},
     models::MeasureModel,
     net::{load_weights_into_net, NNWrapper},
@@ -32,8 +32,12 @@ impl Plugin for FilterPlayPlugin {
             Update,
             (
                 init_probs_viewer.run_if(resource_added::<LevelLayout>),
-                update_filter_learned.run_if(resource_exists::<LevelLayout>),
-                update_filter_manual.run_if(resource_exists::<LevelLayout>),
+                update_filter_learned
+                    .after(update_observations)
+                    .run_if(resource_exists::<LevelLayout>),
+                update_filter_manual
+                    .after(update_observations)
+                    .run_if(resource_exists::<LevelLayout>),
                 update_probs_viewers,
                 load_weights_into_net::<MeasureModel>,
                 toggle_viewers,
@@ -158,12 +162,12 @@ fn pos_to_grid(x: f32, y: f32, cell_size: f32) -> (usize, usize) {
 /// Updates filter probabilities for manual filters.
 fn update_filter_manual(
     mut filter_query: Query<&mut BayesFilter, With<ManualFilter>>,
-    pursuer_query: Query<&PursuerAgent>,
+    pursuer_query: Query<(&PursuerAgent, &GlobalTransform)>,
     player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
     level: Res<LevelLayout>,
 ) {
     for mut filter in filter_query.iter_mut() {
-        if let Ok(pursuer) = pursuer_query.get_single() {
+        if let Ok((pursuer, pursuer_xform)) = pursuer_query.get_single() {
             if pursuer.obs_timer.just_finished() {
                 if let Some(agent_state) = &pursuer.agent_state {
                     // Apply motion model
@@ -176,6 +180,8 @@ fn update_filter_manual(
                         for x in 0..size {
                             let grid_lkhd = (!level.walls[y * size + x]) as u8 as f32;
                             let mut agent_lkhd = 1.;
+                            let mut noise_lkhd = 1.;
+                            let mut vis_lkhd = 1.;
 
                             if let Ok((player_e, player_xform)) = player_query.get_single() {
                                 if agent_state.observing.contains(&player_e) {
@@ -189,18 +195,63 @@ fn update_filter_manual(
                                     // Cells within vision have 0% chance of agent being there
                                     agent_lkhd = 1. - agent_state.visible_cells[y * size + x];
                                     // All other cells are equally probable
-                                    agent_lkhd /=
-                                        size.pow(2) as f32 - agent_state.visible_cells.iter().sum::<f32>();
+                                    agent_lkhd /= size.pow(2) as f32
+                                        - agent_state.visible_cells.iter().sum::<f32>();
+
+                                    // If any noise sources are triggered, make the likelihood a normal distribution centered on it
+                                    let pos = Vec2::new(x as f32, y as f32) * GRID_CELL_SIZE;
+                                    let agent_pos = pursuer_xform.translation().xy();
+                                    for obj_id in &agent_state.listening {
+                                        let noise_obj =
+                                            agent_state.noise_sources.get(obj_id).unwrap();
+                                        let mean = noise_obj.pos;
+                                        let var = (noise_obj.pos - agent_pos).length_squared();
+                                        let diff = pos - mean;
+                                        let exp = -((diff * diff) / (2. * var));
+                                        let val = Vec2::new(exp.x.exp(), exp.y.exp())
+                                            / f32::sqrt(2. * std::f32::consts::PI * var);
+                                        noise_lkhd *= val.x * val.y;
+                                    }
+
+                                    // If any visual markers are moved, we can localize the player based on its start
+                                    // position, end position, and how long it's been since the pursuer last looked at
+                                    // it
+                                    let max_speed = GRID_CELL_SIZE;
+                                    for obj_id in &agent_state.observing {
+                                        if agent_state.vm_data.contains_key(obj_id) {
+                                            let vm_data = agent_state.vm_data[obj_id];
+                                            let obs_obj = agent_state.objects[obj_id];
+                                            if vm_data.last_seen_elapsed > 1.
+                                                && !vm_data.pushed_by_self
+                                            {
+                                                let last_pos = vm_data.last_pos;
+                                                let curr_pos = obs_obj.pos;
+                                                let moved_amount =
+                                                    (last_pos - curr_pos).length_squared();
+                                                if moved_amount > 0.1 {
+                                                    let curr_dist =
+                                                        (pos - curr_pos).length_squared();
+                                                    let max_dist = (max_speed
+                                                        * vm_data.last_seen_elapsed)
+                                                        .powi(2);
+                                                    if curr_dist > max_dist {
+                                                        vis_lkhd = 0.;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            lkhd[y][x] = grid_lkhd * agent_lkhd;
+                            lkhd[y][x] = grid_lkhd * agent_lkhd * noise_lkhd * vis_lkhd;
                         }
                     }
                     let lkhd = Tensor::from_slice(
                         &lkhd.into_iter().flatten().collect::<Vec<f32>>(),
                         &[size, size],
                         &Device::Cpu,
-                    ).unwrap();
+                    )
+                    .unwrap();
                     let probs = (&probs * &lkhd).unwrap();
                     let probs = (&probs
                         / probs.sum_all().unwrap().to_scalar::<f32>().unwrap() as f64)

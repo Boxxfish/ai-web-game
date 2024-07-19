@@ -103,6 +103,7 @@ def manual_update(
         [game_state.level_size, game_state.level_size]
     )
     lkhd = np.zeros([size, size])
+    agent_pos = agent_state.pos
     for y in range(size):
         for x in range(size):
             grid_lkhd = 1 - obs_grid[y][x]
@@ -126,7 +127,7 @@ def manual_update(
                 for obj_id in agent_state.listening:
                     noise_obj = game_state.noise_sources[obj_id]
                     mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
-                    var = (noise_obj.active_radius / 2)**2
+                    var = ((mean - np.array([agent_pos.x, agent_pos.y])))**2
                     val = np.exp(-((pos - mean) ** 2 / (2 * var))) / math.sqrt(
                         2 * math.pi * var
                     )
