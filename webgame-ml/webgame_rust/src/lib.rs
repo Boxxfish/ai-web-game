@@ -62,6 +62,8 @@ pub struct VMData {
     pub last_seen_elapsed: f32,
     #[pyo3(get)]
     pub last_pos: PyVec2,
+    #[pyo3(get)]
+    pub pushed_by_self: bool,
 }
 
 /// Contains the state of an agent for a single frame.
@@ -231,6 +233,7 @@ fn get_agent_state<T: Component>(world: &mut World, size: usize) -> AgentState {
                     last_seen: vm_data.last_seen,
                     last_seen_elapsed: vm_data.last_seen_elapsed,
                     last_pos: vm_data.last_pos.into(),
+                    pushed_by_self: vm_data.pushed_by_self,
                 },
             )
         })
@@ -241,7 +244,8 @@ fn get_agent_state<T: Component>(world: &mut World, size: usize) -> AgentState {
         .iter(world)
         .filter(|(_, noise_xform, noise_src)| {
             (xform.translation().xy() - noise_xform.translation().xy()).length_squared()
-                <= noise_src.noise_radius.powi(2) && noise_src.activated_by_player
+                <= noise_src.noise_radius.powi(2)
+                && noise_src.activated_by_player
         })
         .map(|(e, _, _)| e.to_bits())
         .collect();
