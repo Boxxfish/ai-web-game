@@ -19,7 +19,6 @@ impl Plugin for WorldObjPlugin {
             (
                 handle_key_touch,
                 update_noise_src,
-                // visualize_noise_src,
                 // visualize_visual_marker,
             ),
         );
@@ -32,7 +31,12 @@ impl Plugin for WorldObjPlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, init_particle_mesh).add_systems(
             Update,
-            (key_idle_anim, update_pickup_effect, update_particles),
+            (
+                key_idle_anim,
+                update_pickup_effect,
+                update_particles,
+                visualize_noise_src,
+            ),
         );
     }
 }
@@ -65,11 +69,25 @@ fn update_particles(
 }
 
 #[derive(Resource)]
-struct ParticleMesh(Handle<Mesh>);
+struct QuadMesh(Handle<Mesh>);
 
-fn init_particle_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+#[derive(Resource)]
+struct ShockwaveMaterial(Handle<StandardMaterial>);
+
+fn init_particle_mesh(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
     let handle = meshes.add(Rectangle::new(1., 1.));
-    commands.insert_resource(ParticleMesh(handle));
+    commands.insert_resource(QuadMesh(handle));
+    let shockwave_material = materials.add(StandardMaterial {
+        base_color_texture: Some(asset_server.load("shockwave.png")),
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+    commands.insert_resource(ShockwaveMaterial(shockwave_material));
 }
 
 /// Causes the entity to spin around, emit particles, then disappear.
@@ -103,7 +121,7 @@ fn update_pickup_effect(
     mut effect_query: Query<(Entity, &mut PickupEffect, &mut Transform, &GlobalTransform)>,
     time: Res<Time>,
     mut commands: Commands,
-    particle_mesh: Res<ParticleMesh>,
+    particle_mesh: Res<QuadMesh>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for (e, mut effect, mut xform, &global_xform) in effect_query.iter_mut() {
@@ -241,24 +259,60 @@ fn update_noise_src(
     }
 }
 
+/// A shockwave visual effect.
+#[derive(Component)]
+struct ShockwaveEffect {
+    pub timer: Timer,
+    pub size: f32,
+}
+
 /// Visualizes a noise source.
-#[allow(dead_code)]
-fn visualize_noise_src(mut gizmos: Gizmos, noise_query: Query<(&GlobalTransform, &NoiseSource)>) {
+fn visualize_noise_src(
+    noise_query: Query<(&GlobalTransform, &NoiseSource)>,
+    mut effect_query: Query<(
+        Entity,
+        &mut ShockwaveEffect,
+        &mut Transform,
+        &mut Handle<StandardMaterial>,
+    )>,
+    time: Res<Time>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    quad_mesh: Res<QuadMesh>,
+    shockwave_material: Res<ShockwaveMaterial>,
+) {
     for (obj_xform, noise) in noise_query.iter() {
         let obj_pos = obj_xform.translation().xy();
-        gizmos.circle(
-            obj_pos.extend(GRID_CELL_SIZE),
-            Direction3d::Z,
-            noise.active_radius,
-            Color::BLUE,
-        );
+        for (effect_e, mut effect, mut xform, mat) in effect_query.iter_mut() {
+            let pct = effect.timer.fraction();
+            if let Some(mat) = materials.get_mut(mat.id()) {
+                mat.base_color.set_a(1. - pct);
+            }
+            let scale = pct * effect.size * 2.;
+            xform.scale = Vec3::new(scale, scale, 1.);
+            effect.timer.tick(time.delta());
+            if effect.timer.just_finished() {
+                commands.entity(effect_e).despawn_recursive();
+            }
+        }
         if noise.activated_by_player {
-            gizmos.circle(
-                obj_pos.extend(GRID_CELL_SIZE),
-                Direction3d::Z,
-                noise.noise_radius,
-                Color::ORANGE,
-            );
+            if effect_query.is_empty() {
+                commands.spawn((
+                    PbrBundle {
+                        mesh: quad_mesh.0.clone(),
+                        material: shockwave_material.0.clone(),
+                        transform: Transform::from_translation(
+                            obj_xform.translation().xy().extend(10.),
+                        ),
+                        ..default()
+                    },
+                    ShockwaveEffect {
+                        timer: Timer::from_seconds(0.4, TimerMode::Once),
+                        size: noise.noise_radius,
+                    },
+                ));
+            }
         }
     }
 }
