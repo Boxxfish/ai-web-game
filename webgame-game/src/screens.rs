@@ -93,10 +93,6 @@ const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
     ("furniture/wallDoorway.glb#Scene0", AssetType::Scene),
     ("furniture/doorway.glb#Scene0", AssetType::Scene),
     ("furniture/floorFull.glb#Scene0", AssetType::Scene),
-    (
-        "furniture/bathroomCabinetDrawer.glb#Scene0",
-        AssetType::Scene,
-    ),
     ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
     ("key.glb#Scene0", AssetType::Scene),
     (

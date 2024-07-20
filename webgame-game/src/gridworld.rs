@@ -506,7 +506,6 @@ fn setup_entities(
                 child_builder.with_children(|p| {
                     if is_playable.is_some() {
                         let base_xform = Transform::default()
-                            .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
                             .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
                             .with_scale(Vec3::ONE * GRID_CELL_SIZE * 2.);
                         let rot = match obj.dir.clone().unwrap_or("left".into()).as_str() {
