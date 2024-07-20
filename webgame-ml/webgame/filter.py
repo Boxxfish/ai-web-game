@@ -1,3 +1,4 @@
+import math
 from typing import *
 import numpy as np
 from scipy import signal  # type: ignore
@@ -89,7 +90,6 @@ def manual_update(
     cell_size: float,
     is_pursuer: bool,
 ) -> np.ndarray:
-    assert not use_objs, "Not compatible with objects"
     # Check whether agent can see the player
     other_agent = ["pursuer", "player"][int(is_pursuer)]
     other_e, other_obs = list(
@@ -103,11 +103,15 @@ def manual_update(
         [game_state.level_size, game_state.level_size]
     )
     lkhd = np.zeros([size, size])
+    agent_pos = agent_state.pos
     for y in range(size):
         for x in range(size):
             grid_lkhd = 1 - obs_grid[y][x]
             agent_lkhd = 1.0
+            noise_lkhd = 1.0
+            vis_lkhd = 1.0
             if player_vis_grid is not None:
+                pass
                 if player_vis_grid != (x, y):
                     agent_lkhd = 0.0
             else:
@@ -118,7 +122,35 @@ def manual_update(
                 # All other cells are equally probable
                 agent_lkhd = agent_lkhd / (size**2 - sum(agent_state.visible_cells))
 
-            lkhd[y][x] = grid_lkhd * agent_lkhd
+                # If any noise sources are triggered, make the likelihood a normal distribution centered on it
+                pos = np.array([x, y], dtype=float) * CELL_SIZE
+                for obj_id in agent_state.listening:
+                    noise_obj = game_state.noise_sources[obj_id]
+                    mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
+                    var = ((mean - np.array([agent_pos.x, agent_pos.y])))**2
+                    val = np.exp(-((pos - mean) ** 2 / (2 * var))) / math.sqrt(
+                        2 * math.pi * var
+                    )
+                    noise_lkhd *= val.prod()
+
+                # If any visual markers are moved, we can localize the player based on its start position, end position,
+                # and how long it's been since the pursuer last looked at it
+                max_speed = CELL_SIZE
+                for obj_id in agent_state.observing:
+                    if obj_id in agent_state.vm_data:
+                        vm_data = agent_state.vm_data[obj_id]
+                        obs_obj = game_state.objects[obj_id]
+                        if vm_data.last_seen_elapsed > 1 and not vm_data.pushed_by_self:
+                            last_pos = np.array([vm_data.last_pos.x, vm_data.last_pos.y])
+                            curr_pos = np.array([obs_obj.pos.x, obs_obj.pos.y])
+                            moved_amount = ((last_pos - curr_pos)**2).sum()
+                            if moved_amount > 0.1:
+                                curr_dist = ((pos - curr_pos)**2).sum()
+                                max_dist = (max_speed * vm_data.last_seen_elapsed)**2
+                                if curr_dist > max_dist:
+                                    vis_lkhd = 0.0
+
+            lkhd[y][x] = grid_lkhd * agent_lkhd * noise_lkhd * vis_lkhd
     return lkhd
 
 
@@ -306,21 +338,23 @@ if __name__ == "__main__":
             action = policies[agent](agent, env, obs[agent])
             actions[agent] = action
         obs_, rew, done, trunc, info = env.step(actions)
-        if done["pursuer"]:
-            obs_ = env.reset()[0]
-            b_filter = BayesFilter(
-                env.game_state.level_size,
-                CELL_SIZE,
-                update_fn,
-                args.use_objs,
-                True,
-                args.lkhd_min,
-            )
-            if args.start_gt:
-                b_filter.belief = np.zeros(b_filter.belief.shape)
-                play_pos = env.game_state.player.pos
-                x, y = pos_to_grid(play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE)
-                b_filter.belief[y, x] = 1
+        # if done["pursuer"]:
+        #     obs_ = env.reset()[0]
+        #     b_filter = BayesFilter(
+        #         env.game_state.level_size,
+        #         CELL_SIZE,
+        #         update_fn,
+        #         args.use_objs,
+        #         True,
+        #         args.lkhd_min,
+        #     )
+        #     if args.start_gt:
+        #         b_filter.belief = np.zeros(b_filter.belief.shape)
+        #         play_pos = env.game_state.player.pos
+        #         x, y = pos_to_grid(
+        #             play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
+        #         )
+        #         b_filter.belief[y, x] = 1
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
 
         game_state = env.game_state

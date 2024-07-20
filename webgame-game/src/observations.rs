@@ -13,10 +13,12 @@ use crate::{
 const OBJ_DIM: usize = 8;
 const MAX_OBJS: usize = 16;
 
+#[derive(Clone, Copy)]
 pub struct ObservableObject {
     pub pos: Vec2,
 }
 
+#[derive(Clone, Copy)]
 pub struct NoiseSourceObject {
     pub pos: Vec2,
     pub active_radius: f32,
@@ -27,36 +29,12 @@ pub struct NoiseSourceObject {
 /// The last element in the grid observation is zeroed out, this must be replaced with the localization probabilities
 /// for the agent.
 pub fn encode_obs(
-    observable_query: &Query<(Entity, &GlobalTransform), With<Observable>>,
-    noise_query: &Query<(Entity, &GlobalTransform, &NoiseSource)>,
     player_e: Entity,
     level: &Res<LevelLayout>,
     agent_state: &AgentState,
 ) -> candle_core::Result<(Tensor, Tensor, Tensor)> {
-    // Encode global state stuff
-    let mut objects = HashMap::new();
-    for (e, xform) in observable_query.iter() {
-        objects.insert(
-            e,
-            ObservableObject {
-                pos: xform.translation().xy(),
-            },
-        );
-    }
-
-    let mut noise_sources = HashMap::new();
-    for (e, xform, noise_src) in noise_query.iter() {
-        noise_sources.insert(
-            e,
-            NoiseSourceObject {
-                pos: xform.translation().xy(),
-                active_radius: noise_src.active_radius,
-            },
-        );
-    }
-
     // Set up observations
-    let player_obs = objects.get(&player_e).unwrap();
+    let player_obs = agent_state.objects.get(&player_e).unwrap();
     let device = Device::Cpu;
     let mut obs_vec = vec![0.; 7];
     obs_vec[0] = 0.5 + agent_state.pos.x / (level.size as f32 * GRID_CELL_SIZE);
@@ -84,7 +62,7 @@ pub fn encode_obs(
     let mut obs_vecs = vec![vec![0.; OBJ_DIM]; MAX_OBJS];
     for (i, e) in agent_state.observing.iter().enumerate() {
         if agent_state.vm_data.contains_key(e) {
-            let obs_obj = objects.get(e).unwrap();
+            let obs_obj = agent_state.objects.get(e).unwrap();
             let mut obj_features = vec![0.; OBJ_DIM];
             obj_features[0] = 0.5 + obs_obj.pos.x / (level.size as f32 * GRID_CELL_SIZE);
             obj_features[1] = 0.5 + obs_obj.pos.y / (level.size as f32 * GRID_CELL_SIZE);
@@ -97,7 +75,7 @@ pub fn encode_obs(
         }
     }
     for (i, e) in agent_state.listening.iter().enumerate() {
-        let obj_noise = noise_sources.get(e).unwrap();
+        let obj_noise = agent_state.noise_sources.get(e).unwrap();
         let mut obj_features = vec![0.; OBJ_DIM];
         obj_features[0] = 0.5 + obj_noise.pos.x / (level.size as f32 * GRID_CELL_SIZE);
         obj_features[1] = 0.5 + obj_noise.pos.y / (level.size as f32 * GRID_CELL_SIZE);
@@ -112,7 +90,14 @@ pub fn encode_obs(
         attn_mask[i] = 1.;
     }
     let filter_probs = Tensor::zeros(walls.shape(), DType::F32, &device)?;
-    let grid = Tensor::stack(&[&walls, &filter_probs, &Tensor::zeros(walls.shape(), DType::F32, &device).unwrap()], 0)?;
+    let grid = Tensor::stack(
+        &[
+            &walls,
+            &filter_probs,
+            &Tensor::zeros(walls.shape(), DType::F32, &device).unwrap(),
+        ],
+        0,
+    )?;
 
     // Combine scalar observations with grid
     let scalar_grid = Tensor::from_slice(&obs_vec, &[obs_vec.len()], &device)?
@@ -141,6 +126,8 @@ pub struct AgentState {
     pub listening: Vec<Entity>,
     pub vm_data: HashMap<Entity, VMSeenData>,
     pub visible_cells: Vec<f32>,
+    pub objects: HashMap<Entity, ObservableObject>,
+    pub noise_sources: HashMap<Entity, NoiseSourceObject>,
 }
 
 /// Encodes information from the world into an agent's state.
@@ -149,7 +136,32 @@ pub fn encode_state(
     pursuer_query: &Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
     listening_query: &Query<(Entity, &GlobalTransform, &NoiseSource)>,
     level: &Res<LevelLayout>,
+
+    observable_query: &Query<(Entity, &GlobalTransform), With<Observable>>,
+    noise_query: &Query<(Entity, &GlobalTransform, &NoiseSource)>,
 ) -> AgentState {
+    // Encode global state stuff
+    let mut objects = HashMap::new();
+    for (e, xform) in observable_query.iter() {
+        objects.insert(
+            e,
+            ObservableObject {
+                pos: xform.translation().xy(),
+            },
+        );
+    }
+
+    let mut noise_sources = HashMap::new();
+    for (e, xform, noise_src) in noise_query.iter() {
+        noise_sources.insert(
+            e,
+            NoiseSourceObject {
+                pos: xform.translation().xy(),
+                active_radius: noise_src.active_radius,
+            },
+        );
+    }
+
     let (agent, &xform, observer) = pursuer_query.single();
     let vis_mesh = observer.vis_mesh.clone();
     let pos = xform.translation().xy();
@@ -165,7 +177,8 @@ pub fn encode_state(
         .iter()
         .filter(|(_, noise_xform, noise_src)| {
             (xform.translation().xy() - noise_xform.translation().xy()).length_squared()
-                <= noise_src.noise_radius
+                <= noise_src.noise_radius.powi(2)
+                && noise_src.activated_by_player
         })
         .map(|(e, _, _)| e)
         .collect();
@@ -227,6 +240,8 @@ pub fn encode_state(
         listening,
         vm_data,
         visible_cells,
+        objects,
+        noise_sources,
     }
 }
 

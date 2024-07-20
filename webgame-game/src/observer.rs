@@ -8,7 +8,9 @@ use bevy_rapier2d::{math::Real, prelude::*};
 use ordered_float::OrderedFloat;
 
 use crate::{
-    agents::{move_agents, Agent},
+    agents::{move_agents, Agent, PursuerAgent},
+    configs::IsPlayable,
+    gridworld::GRID_CELL_SIZE,
     world_objs::VisualMarker,
 };
 
@@ -52,6 +54,8 @@ pub struct VMSeenData {
     pub pos: Vec2,
     /// The last known position of this object (if never seen before this is the position it starts at).
     pub last_pos: Vec2,
+    /// True if the marker was modified by this agent this frame.
+    pub pushed_by_self: bool,
 }
 
 /// Indicates that this entity can observe observable entities.
@@ -192,38 +196,42 @@ fn update_observers(
 }
 
 /// Updates observers' visual marker data.
-fn update_vm_data(
-    mut observer_query: Query<&mut Observer>,
+pub fn update_vm_data(
+    mut observer_query: Query<(&mut Observer, &GlobalTransform, Option<&PursuerAgent>)>,
     visual_query: Query<(Entity, &GlobalTransform), With<VisualMarker>>,
     time: Res<Time>,
+    is_playable: Option<Res<IsPlayable>>,
 ) {
-    for mut observer in observer_query.iter_mut() {
-        for (v_e, xform) in visual_query.iter() {
-            if observer.observing.contains(&v_e) {
-                if let Some(vm_data) = observer.seen_markers.get_mut(&v_e) {
-                    vm_data.last_seen_elapsed = time.elapsed_seconds_wrapped() - vm_data.last_seen;
-                    vm_data.last_seen = time.elapsed_seconds_wrapped();
-                    vm_data.last_pos = vm_data.pos;
-                    vm_data.pos = xform.translation().xy();
-                } else {
-                    observer.seen_markers.insert(
-                        v_e,
-                        VMSeenData {
-                            last_seen: time.elapsed_seconds_wrapped(),
-                            last_seen_elapsed: time.elapsed_seconds_wrapped(),
-                            pos: xform.translation().xy(),
-                            last_pos: xform.translation().xy(),
-                        },
-                    );
+    for (mut observer, agent_xform, pursuer) in observer_query.iter_mut() {
+        // During gameplay, only update vm data right before observations are updated
+        if is_playable.is_some() {
+            if let Some(pursuer) = pursuer {
+                let mut timer = pursuer.obs_timer.clone();
+                timer.tick(time.delta());
+                if !timer.just_finished() {
+                    continue;
                 }
-            } else {
+            }
+        }
+        for (v_e, xform) in visual_query.iter() {
+            let pushed_by_self = (xform.translation().xy() - agent_xform.translation().xy())
+                .length_squared()
+                <= (GRID_CELL_SIZE * 0.8).powi(2);
+            if observer.observing.contains(&v_e) || pushed_by_self {
+                let mut last_seen = 0.;
+                let mut last_pos = xform.translation().xy();
+                if let Some(vm_data) = observer.seen_markers.get(&v_e) {
+                    last_seen = vm_data.last_seen;
+                    last_pos = vm_data.pos;
+                }
                 observer.seen_markers.insert(
                     v_e,
                     VMSeenData {
                         last_seen: time.elapsed_seconds_wrapped(),
-                        last_seen_elapsed: time.elapsed_seconds_wrapped(),
-                        last_pos: xform.translation().xy(),
+                        last_seen_elapsed: time.elapsed_seconds_wrapped() - last_seen,
                         pos: xform.translation().xy(),
+                        last_pos,
+                        pushed_by_self,
                     },
                 );
             }

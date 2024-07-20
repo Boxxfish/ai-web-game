@@ -495,9 +495,9 @@ fn setup_entities(
                         },
                         LockedAxes::ROTATION_LOCKED,
                         NoiseSource {
-                            noise_radius: GRID_CELL_SIZE * 3.,
-                            active_radius: GRID_CELL_SIZE * 1.5,
-                            activated_by: None,
+                            noise_radius: GRID_CELL_SIZE * 4.,
+                            active_radius: GRID_CELL_SIZE * 0.8,
+                            activated_by_player: false,
                         },
                         VisualMarker,
                         Observable,
@@ -506,7 +506,6 @@ fn setup_entities(
                 child_builder.with_children(|p| {
                     if is_playable.is_some() {
                         let base_xform = Transform::default()
-                            .with_translation(-Vec3::X * GRID_CELL_SIZE / 2.)
                             .with_rotation(Quat::from_rotation_x(std::f32::consts::PI / 2.))
                             .with_scale(Vec3::ONE * GRID_CELL_SIZE * 2.);
                         let rot = match obj.dir.clone().unwrap_or("left".into()).as_str() {

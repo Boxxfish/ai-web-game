@@ -10,7 +10,7 @@ use crate::{
     models::PolicyNet,
     net::{load_weights_into_net, NNWrapper},
     observations::{encode_obs, encode_state, AgentState},
-    observer::{Observable, Observer},
+    observer::{update_vm_data, Observable, Observer},
     world_objs::NoiseSource,
 };
 
@@ -39,7 +39,7 @@ impl Plugin for AgentPlayPlugin {
         app.add_systems(
             Update,
             (
-                (set_player_action, set_pursuer_action, update_observations)
+                (set_player_action, set_pursuer_action, update_observations.after(update_vm_data))
                     .run_if(resource_exists::<ShouldRun>),
                 load_weights_into_net::<PolicyNet>,
             ),
@@ -80,7 +80,7 @@ impl Default for PursuerAgent {
 
 /// Updates the Pursuer's observations.
 #[allow(clippy::too_many_arguments)]
-fn update_observations(
+pub fn update_observations(
     mut pursuer_query: Query<&mut PursuerAgent>,
     p_query: Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
     time: Res<Time>,
@@ -95,15 +95,14 @@ fn update_observations(
             pursuer.obs_timer.tick(time.delta());
             if pursuer.obs_timer.just_finished() {
                 // Encode observations
-                let agent_state = encode_state(&p_query, &listening_query, &level);
-                let (grid, _, _) = encode_obs(
+                let agent_state = encode_state(
+                    &p_query,
+                    &listening_query,
+                    &level,
                     &observable_query,
                     &noise_query,
-                    player_e,
-                    &level,
-                    &agent_state,
-                )
-                .unwrap();
+                );
+                let (grid, _, _) = encode_obs(player_e, &level, &agent_state).unwrap();
                 pursuer.observations = Some((grid, None, None));
                 pursuer.agent_state = Some(agent_state);
             }
@@ -209,7 +208,6 @@ fn set_pursuer_action(
                         .unwrap()
                         .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
                     .unwrap();
-                info!("{:?}", probs.to_vec1::<f32>().unwrap());
                     let index =
                         rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap())
                             .unwrap();

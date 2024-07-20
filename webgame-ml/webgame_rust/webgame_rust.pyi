@@ -28,6 +28,7 @@ class VMData:
     last_seen: float
     last_seen_elapsed: float
     last_pos: PyVec2
+    pushed_by_self: bool
 
 class AgentState:
     """

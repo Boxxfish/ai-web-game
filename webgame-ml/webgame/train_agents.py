@@ -43,8 +43,8 @@ class Config:
     discount: float = 0.98  # Discount factor applied to rewards.
     lambda_: float = 0.95  # Lambda for GAE.
     epsilon: float = 0.2  # Epsilon for importance sample clipping.
-    max_eval_steps: int = 500  # Number of eval runs to average over.
-    eval_steps: int = 8  # Max number of steps to take during each eval run.
+    max_eval_steps: int = 500  # Max number of steps to take during each eval run.
+    eval_steps: int = 8  # Number of eval runs to average over.
     v_lr: float = 0.01  # Learning rate of the value net.
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
@@ -87,7 +87,7 @@ class ValueNet(nn.Module):
             nn.Linear(256, 256),
             nn.SiLU(),
             nn.Linear(256, 1),
-            nn.Tanh()
+            nn.Tanh(),
         )
 
     def forward(
@@ -196,11 +196,21 @@ if __name__ == "__main__":
 
     env = ParallelVecWrapper(
         [
-            lambda: GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer, player_sees_visible_cells=cfg.player_sees_visible_cells)
+            lambda: GameEnv(
+                cfg.use_objs,
+                cfg.wall_prob,
+                max_timer=cfg.max_timer,
+                player_sees_visible_cells=cfg.player_sees_visible_cells,
+            )
             for _ in range(cfg.num_envs)
         ]
     )
-    test_env = GameEnv(cfg.use_objs, cfg.wall_prob, max_timer=cfg.max_timer, player_sees_visible_cells=cfg.player_sees_visible_cells)
+    test_env = GameEnv(
+        cfg.use_objs,
+        cfg.wall_prob,
+        max_timer=cfg.max_timer,
+        player_sees_visible_cells=cfg.player_sees_visible_cells,
+    )
 
     # Initialize policy and value networks
     channels = 9
