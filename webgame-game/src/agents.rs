@@ -284,9 +284,10 @@ fn set_player_action(
 /// Updates the Pursuer's next action.
 fn set_pursuer_action(
     net_query: Query<&NNWrapper<PolicyNet>>,
-    mut pursuer_query: Query<(&mut NextAction, &mut PursuerAgent)>,
+    mut pursuer_query: Query<(&mut NextAction, &mut PursuerAgent, &GlobalTransform)>,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
 ) {
-    if let Ok((mut next_action, mut pursuer)) = pursuer_query.get_single_mut() {
+    if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
         let p_net = net_query.single();
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
@@ -313,17 +314,33 @@ fn set_pursuer_action(
                     let index = rand::distributions::WeightedIndex::new(probs).unwrap();
                     let mut rng = rand::thread_rng();
                     let action = index.sample(&mut rng);
-                    let dir = match action {
-                        1 => Vec2::Y,
-                        2 => (Vec2::Y + Vec2::X).normalize(),
-                        3 => Vec2::X,
-                        4 => (-Vec2::Y + Vec2::X).normalize(),
-                        5 => -Vec2::Y,
-                        6 => (-Vec2::Y + -Vec2::X).normalize(),
-                        7 => -Vec2::X,
-                        8 => (Vec2::Y + -Vec2::X).normalize(),
-                        _ => Vec2::ZERO,
-                    };
+
+                    let action_map = [
+                        Vec2::ZERO,
+                        Vec2::Y,
+                        (Vec2::Y + Vec2::X).normalize(),
+                        Vec2::X,
+                        (-Vec2::Y + Vec2::X).normalize(),
+                        -Vec2::Y,
+                        (-Vec2::Y + -Vec2::X).normalize(),
+                        -Vec2::X,
+                        (Vec2::Y + -Vec2::X).normalize(),
+                    ];
+                    let mut dir = action_map[action];
+
+                    // Beeline towards player if in sight
+                    let (player_e, player_xform) = player_query.single();
+                    if pursuer
+                        .agent_state
+                        .as_ref()
+                        .unwrap()
+                        .observing
+                        .contains(&player_e)
+                    {
+                        let offset =
+                            player_xform.translation().xy() - pursuer_xform.translation().xy();
+                        dir = offset.normalize();
+                    }
 
                     next_action.dir = dir;
                     next_action.toggle_objs = false;
