@@ -353,7 +353,7 @@ impl LoadableNN for PolicyNet {
         let use_pos = true;
         let objs_shape = None;
         let proj_dim = 32;
-        let action_count = 10;
+        let action_count = 9;
 
         let backbone = Backbone::new(
             use_pos,

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{f32::consts::PI, time::Duration};
 
 use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::control::KinematicCharacterController;
@@ -11,7 +11,7 @@ use crate::{
     net::{load_weights_into_net, NNWrapper},
     observations::{encode_obs, encode_state, AgentState},
     observer::{update_vm_data, Observable, Observer},
-    world_objs::NoiseSource,
+    world_objs::{NoiseSource, QuadMesh},
 };
 
 /// Plugin for agent stuff.
@@ -36,10 +36,15 @@ pub struct AgentPlayPlugin;
 
 impl Plugin for AgentPlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
+        app.add_systems(Startup, add_materials).add_systems(
             Update,
             (
-                (set_player_action, set_pursuer_action, update_observations.after(update_vm_data))
+                (
+                    set_player_action,
+                    set_pursuer_action,
+                    visualize_act_probs,
+                    update_observations.after(update_vm_data),
+                )
                     .run_if(resource_exists::<ShouldRun>),
                 load_weights_into_net::<PolicyNet>,
             ),
@@ -66,6 +71,7 @@ pub struct PursuerAgent {
     pub observations: Option<(Tensor, Option<Tensor>, Option<Tensor>)>,
     pub obs_timer: Timer,
     pub agent_state: Option<AgentState>,
+    pub action_probs: Vec<f32>,
 }
 
 impl Default for PursuerAgent {
@@ -74,6 +80,7 @@ impl Default for PursuerAgent {
             observations: None,
             obs_timer: Timer::from_seconds(0.4, TimerMode::Repeating),
             agent_state: None,
+            action_probs: Vec::new(),
         }
     }
 }
@@ -143,6 +150,99 @@ fn visualize_agent<T: Component>(
     }
 }
 
+/// A visual for showing action probabilities.
+#[derive(Component)]
+struct ActProbVis {
+    pub action_id: usize,
+}
+
+#[derive(Resource)]
+struct ArrowMat(Handle<StandardMaterial>);
+
+fn add_materials(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let material = StandardMaterial {
+        base_color: Color::BLACK,
+        base_color_texture: Some(asset_server.load("arrow.png")),
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    };
+    let mat = ArrowMat(materials.add(material));
+    commands.insert_resource(mat);
+}
+
+/// Shows action probabilities.
+fn visualize_act_probs(
+    pursuer_query: Query<(Entity, &PursuerAgent)>,
+    mut vis_query: Query<(&ActProbVis, &Parent, &mut Transform)>,
+    mut commands: Commands,
+    quad_mesh: Res<QuadMesh>,
+    arrow_mat: Res<ArrowMat>,
+) {
+    let offset = 16.;
+    let offset_z = 10.;
+    if vis_query.is_empty() {
+        for (pursuer_e, _) in pursuer_query.iter() {
+            commands.entity(pursuer_e).with_children(|p| {
+                for action_id in 0..9 {
+                    let transform = match action_id {
+                        0 => Transform::default(),
+                        1 => Transform::from_translation((Vec2::Y * offset).extend(offset_z))
+                            .with_rotation(Quat::from_rotation_z(PI)),
+                        2 => Transform::from_translation(
+                            ((Vec2::Y + Vec2::X).normalize() * offset).extend(offset_z),
+                        )
+                        .with_rotation(Quat::from_rotation_z(3. * PI / 4.)),
+                        3 => Transform::from_translation((Vec2::X * offset).extend(offset_z))
+                            .with_rotation(Quat::from_rotation_z(PI / 2.)),
+                        4 => Transform::from_translation(
+                            ((-Vec2::Y + Vec2::X).normalize() * offset).extend(offset_z),
+                        )
+                        .with_rotation(Quat::from_rotation_z(PI / 4.)),
+                        5 => Transform::from_translation((-Vec2::Y * offset).extend(offset_z)),
+                        6 => Transform::from_translation(
+                            ((-Vec2::Y + -Vec2::X).normalize() * offset).extend(offset_z),
+                        )
+                        .with_rotation(Quat::from_rotation_z(7. * PI / 4.)),
+                        7 => Transform::from_translation((-Vec2::X * offset).extend(offset_z))
+                            .with_rotation(Quat::from_rotation_z(3. * PI / 2.)),
+                        8 => Transform::from_translation(
+                            ((Vec2::Y + -Vec2::X).normalize() * offset).extend(offset_z),
+                        )
+                        .with_rotation(Quat::from_rotation_z(5. * PI / 4.)),
+                        _ => unreachable!(),
+                    };
+                    p.spawn((
+                        ActProbVis { action_id },
+                        PbrBundle {
+                            mesh: quad_mesh.0.clone(),
+                            material: arrow_mat.0.clone(),
+                            transform,
+                            ..default()
+                        },
+                    ));
+                }
+            });
+        }
+    }
+    for (pursuer_e, pursuer) in pursuer_query.iter() {
+        if pursuer.action_probs.is_empty() {
+            continue;
+        }
+        for (vis, parent, mut xform) in vis_query.iter_mut() {
+            if parent.get() == pursuer_e {
+                let action_id = vis.action_id;
+                let prob = pursuer.action_probs[action_id];
+                let scale = 1. + prob * 16.;
+                xform.scale = Vec3::new(scale, scale, 1.);
+            }
+        }
+    }
+}
+
 const AGENT_SPEED: f32 = GRID_CELL_SIZE * 2.;
 
 /// Holds the next action for an agent.
@@ -184,9 +284,10 @@ fn set_player_action(
 /// Updates the Pursuer's next action.
 fn set_pursuer_action(
     net_query: Query<&NNWrapper<PolicyNet>>,
-    mut pursuer_query: Query<(&mut NextAction, &PursuerAgent)>,
+    mut pursuer_query: Query<(&mut NextAction, &mut PursuerAgent, &GlobalTransform)>,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
 ) {
-    if let Ok((mut next_action, pursuer)) = pursuer_query.get_single_mut() {
+    if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
         let p_net = net_query.single();
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
@@ -208,22 +309,38 @@ fn set_pursuer_action(
                         .unwrap()
                         .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
                     .unwrap();
-                    let index =
-                        rand::distributions::WeightedIndex::new(probs.to_vec1::<f32>().unwrap())
-                            .unwrap();
+                    let probs = probs.to_vec1::<f32>().unwrap();
+                    pursuer.action_probs = probs.clone();
+                    let index = rand::distributions::WeightedIndex::new(probs).unwrap();
                     let mut rng = rand::thread_rng();
                     let action = index.sample(&mut rng);
-                    let dir = match action {
-                        1 => Vec2::Y,
-                        2 => (Vec2::Y + Vec2::X).normalize(),
-                        3 => Vec2::X,
-                        4 => (-Vec2::Y + Vec2::X).normalize(),
-                        5 => -Vec2::Y,
-                        6 => (-Vec2::Y + -Vec2::X).normalize(),
-                        7 => -Vec2::X,
-                        8 => (Vec2::Y + -Vec2::X).normalize(),
-                        _ => Vec2::ZERO,
-                    };
+
+                    let action_map = [
+                        Vec2::ZERO,
+                        Vec2::Y,
+                        (Vec2::Y + Vec2::X).normalize(),
+                        Vec2::X,
+                        (-Vec2::Y + Vec2::X).normalize(),
+                        -Vec2::Y,
+                        (-Vec2::Y + -Vec2::X).normalize(),
+                        -Vec2::X,
+                        (Vec2::Y + -Vec2::X).normalize(),
+                    ];
+                    let mut dir = action_map[action];
+
+                    // Beeline towards player if in sight
+                    let (player_e, player_xform) = player_query.single();
+                    if pursuer
+                        .agent_state
+                        .as_ref()
+                        .unwrap()
+                        .observing
+                        .contains(&player_e)
+                    {
+                        let offset =
+                            player_xform.translation().xy() - pursuer_xform.translation().xy();
+                        dir = offset.normalize();
+                    }
 
                     next_action.dir = dir;
                     next_action.toggle_objs = false;

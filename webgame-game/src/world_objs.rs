@@ -1,11 +1,11 @@
 use std::{f32::consts::PI, time::Duration};
 
 use crate::{
-    agents::{get_entity, Agent, NextAction, PlayerAgent},
+    agents::{get_entity, PlayerAgent},
     gridworld::GRID_CELL_SIZE,
     observer::Wall,
 };
-use bevy::{prelude::*, sprite::Mesh2dHandle};
+use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 use rand::Rng;
 
@@ -69,7 +69,7 @@ fn update_particles(
 }
 
 #[derive(Resource)]
-struct QuadMesh(Handle<Mesh>);
+pub struct QuadMesh(pub Handle<Mesh>);
 
 #[derive(Resource)]
 struct ShockwaveMaterial(Handle<StandardMaterial>);
