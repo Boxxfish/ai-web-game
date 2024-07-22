@@ -188,13 +188,14 @@ class PolicyNet(nn.Module):
         super().__init__()
         proj_dim = 32
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
-        self.net = nn.Sequential(
+        self.net1 = nn.Sequential(
             nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
-            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(32, 128, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
-            nn.Flatten(),
-            nn.Linear(size**2 * 16, 256),
+        )
+        self.net2 = nn.Sequential(
+            nn.Linear(128, 256),
             nn.SiLU(),
             nn.Linear(256, 256),
             nn.SiLU(),
@@ -208,5 +209,7 @@ class PolicyNet(nn.Module):
         objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
     ) -> Tensor:
         features = self.backbone(grid, objs, objs_attn_mask)
-        values = self.net(features)
+        values = self.net1(features)
+        values = values.amax(-1).amax(-1)
+        values = self.net2(values)
         return values
