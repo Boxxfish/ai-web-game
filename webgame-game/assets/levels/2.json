@@ -18,8 +18,8 @@
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     "objects": [],
-    "key_pos": [1, 1],
+    "key_pos": [1, 2],
     "door_pos": [15, 1],
-    "pursuer_start": [8, 6],
-    "player_start": [9, 12]
+    "pursuer_start": [7, 6],
+    "player_start": [8, 12]
 }

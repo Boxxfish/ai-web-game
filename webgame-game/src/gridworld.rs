@@ -266,7 +266,7 @@ fn setup_entities(
             });
 
             let pursuer_tile_idx = match &level.pursuer_start {
-                Some((x, y)) => y * level.size + x,
+                Some((x, y)) => (level.size - y - 1) * level.size + x,
                 None => level.get_empty(),
             };
             p.spawn((
@@ -302,7 +302,7 @@ fn setup_entities(
                 }
             });
             let player_tile_idx = match &level.player_start {
-                Some((x, y)) => y * level.size + x,
+                Some((x, y)) => (level.size - y - 1) * level.size + x,
                 None => level.get_empty(),
             };
             p.spawn((

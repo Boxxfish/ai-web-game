@@ -292,28 +292,29 @@ fn set_pursuer_action(
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
                 if let Some((grid, objs, objs_attn_mask)) = &pursuer.observations {
-                    let logits = net
-                        .forward(
-                            &grid.unsqueeze(0).unwrap(),
-                            objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
-                            objs_attn_mask
-                                .as_ref()
-                                .map(|t| t.unsqueeze(0).unwrap())
-                                .as_ref(),
-                        )
-                        .unwrap()
-                        .squeeze(0)
-                        .unwrap();
-                    let probs = (logits
-                        .exp()
-                        .unwrap()
-                        .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
-                    .unwrap();
-                    let probs = probs.to_vec1::<f32>().unwrap();
-                    pursuer.action_probs = probs.clone();
-                    let index = rand::distributions::WeightedIndex::new(probs).unwrap();
-                    let mut rng = rand::thread_rng();
-                    let action = index.sample(&mut rng);
+                    // let logits = net
+                    //     .forward(
+                    //         &grid.unsqueeze(0).unwrap(),
+                    //         objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
+                    //         objs_attn_mask
+                    //             .as_ref()
+                    //             .map(|t| t.unsqueeze(0).unwrap())
+                    //             .as_ref(),
+                    //     )
+                    //     .unwrap()
+                    //     .squeeze(0)
+                    //     .unwrap();
+                    // let probs = (logits
+                    //     .exp()
+                    //     .unwrap()
+                    //     .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
+                    // .unwrap();
+                    // let probs = probs.to_vec1::<f32>().unwrap();
+                    // pursuer.action_probs = probs.clone();
+                    // let index = rand::distributions::WeightedIndex::new(probs).unwrap();
+                    // let mut rng = rand::thread_rng();
+                    // let action = index.sample(&mut rng);
+                    let action = 0;
 
                     let action_map = [
                         Vec2::ZERO,

@@ -39,7 +39,6 @@ impl Plugin for FilterPlayPlugin {
                     .after(update_observations)
                     .run_if(resource_exists::<LevelLayout>),
                 update_probs_viewers,
-                load_weights_into_net::<MeasureModel>,
                 toggle_viewers,
             ),
         );
@@ -78,7 +77,7 @@ struct ManualFilter;
 
 /// Initializes the filter.
 fn init_filter_net(mut commands: Commands) {
-    commands.spawn((BayesFilter::new(8), ManualFilter));
+    commands.spawn((BayesFilter::new(16), ManualFilter));
 }
 
 fn apply_motion(probs: &Tensor, walls: &[bool], size: usize) -> candle_core::Result<Tensor> {
