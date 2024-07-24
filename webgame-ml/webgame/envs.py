@@ -171,7 +171,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (grid_channels, 8, 8)),
+                gym.spaces.Box(0, 1, (grid_channels, 16, 16)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )

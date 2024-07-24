@@ -57,7 +57,7 @@ impl Plugin for GridworldPlayPlugin {
 }
 
 /// The width and height of the level by default.
-pub const DEFAULT_LEVEL_SIZE: usize = 8;
+pub const DEFAULT_LEVEL_SIZE: usize = 16;
 
 pub const GRID_CELL_SIZE: f32 = 25.;
 

@@ -220,7 +220,7 @@ if __name__ == "__main__":
     channels = 9
     if cfg.player_sees_visible_cells:
         channels = 10
-    grid_size = 8
+    grid_size = 16
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
     act_space = env.action_space(env.agents[0])

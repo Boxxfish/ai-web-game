@@ -262,7 +262,7 @@ if __name__ == "__main__":
             channels = 10
         p_net = PolicyNet(
             channels,
-            8,
+            16,
             action_count,
             use_pos,
             (MAX_OBJS, OBJ_DIM) if use_objs else None,
