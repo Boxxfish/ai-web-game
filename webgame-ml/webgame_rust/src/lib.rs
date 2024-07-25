@@ -4,7 +4,7 @@ use bevy::{app::AppExit, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
-    agents::{Agent, NextAction, PlayerAgent, PursuerAgent},
+    agents::{Agent, NextAction, PlayerAgent, PursuerAgent, UseGridPositions},
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{LevelLayout, ResetEvent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE},
     observations::fill_tri_half,
@@ -152,6 +152,7 @@ impl GameWrapper {
             wall_prob,
             if use_objs { DEFAULT_LEVEL_SIZE } else { 0 },
         ));
+        app.insert_resource(UseGridPositions);
 
         if visualize {
             app.add_plugins(VisualizerPlugin {
@@ -200,7 +201,7 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
     let mut next_action = world
         .query_filtered::<&mut NextAction, With<T>>()
         .single_mut(world);
-    next_action.dir = match action {
+    let dir = match action {
         AgentAction::MoveUp => Vec2::Y,
         AgentAction::MoveUpRight => (Vec2::Y + Vec2::X).normalize(),
         AgentAction::MoveRight => Vec2::X,
@@ -211,6 +212,7 @@ fn set_agent_action<T: Component>(world: &mut World, action: AgentAction) {
         AgentAction::MoveUpLeft => (Vec2::Y + -Vec2::X).normalize(),
         _ => Vec2::ZERO,
     };
+    next_action.dir = dir;
     next_action.toggle_objs = action == AgentAction::ToggleObj;
 }
 

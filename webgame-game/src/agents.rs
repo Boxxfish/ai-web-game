@@ -6,6 +6,7 @@ use candle_core::Tensor;
 use rand::distributions::Distribution;
 
 use crate::{
+    filter::pos_to_grid,
     gridworld::{LevelLayout, ShouldRun, GRID_CELL_SIZE},
     models::PolicyNet,
     net::{load_weights_into_net, NNWrapper},
@@ -292,29 +293,28 @@ fn set_pursuer_action(
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
                 if let Some((grid, objs, objs_attn_mask)) = &pursuer.observations {
-                    // let logits = net
-                    //     .forward(
-                    //         &grid.unsqueeze(0).unwrap(),
-                    //         objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
-                    //         objs_attn_mask
-                    //             .as_ref()
-                    //             .map(|t| t.unsqueeze(0).unwrap())
-                    //             .as_ref(),
-                    //     )
-                    //     .unwrap()
-                    //     .squeeze(0)
-                    //     .unwrap();
-                    // let probs = (logits
-                    //     .exp()
-                    //     .unwrap()
-                    //     .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
-                    // .unwrap();
-                    // let probs = probs.to_vec1::<f32>().unwrap();
-                    // pursuer.action_probs = probs.clone();
-                    // let index = rand::distributions::WeightedIndex::new(probs).unwrap();
-                    // let mut rng = rand::thread_rng();
-                    // let action = index.sample(&mut rng);
-                    let action = 0;
+                    let logits = net
+                        .forward(
+                            &grid.unsqueeze(0).unwrap(),
+                            objs.as_ref().map(|t| t.unsqueeze(0).unwrap()).as_ref(),
+                            objs_attn_mask
+                                .as_ref()
+                                .map(|t| t.unsqueeze(0).unwrap())
+                                .as_ref(),
+                        )
+                        .unwrap()
+                        .squeeze(0)
+                        .unwrap();
+                    let probs = (logits
+                        .exp()
+                        .unwrap()
+                        .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
+                    .unwrap();
+                    let probs = probs.to_vec1::<f32>().unwrap();
+                    pursuer.action_probs = probs.clone();
+                    let index = rand::distributions::WeightedIndex::new(probs).unwrap();
+                    let mut rng = rand::thread_rng();
+                    let action = index.sample(&mut rng);
 
                     let action_map = [
                         Vec2::ZERO,
@@ -351,6 +351,10 @@ fn set_pursuer_action(
     }
 }
 
+/// If present, causes positions to be locked to a grid.
+#[derive(Resource)]
+pub struct UseGridPositions;
+
 /// Moves agents around.
 pub fn move_agents(
     mut agent_query: Query<(
@@ -359,20 +363,34 @@ pub fn move_agents(
         &mut KinematicCharacterController,
         &NextAction,
         &Children,
+        &GlobalTransform,
     )>,
     child_query: Query<(Entity, Option<&Name>, Option<&Children>)>,
     mut vis_query: Query<&mut Transform, With<AgentVisuals>>,
     mut anim_query: Query<&mut AnimationPlayer>,
     time: Res<Time>,
     asset_server: Res<AssetServer>,
+    use_grid: Option<Res<UseGridPositions>>,
 ) {
-    for (agent_e, mut agent, mut controller, next_action, children) in agent_query.iter_mut() {
+    for (agent_e, mut agent, mut controller, next_action, children, xform) in agent_query.iter_mut()
+    {
         let dir = next_action.dir;
         let anim_e = get_entity(&agent_e, &["", "", "Root"], &child_query);
         if dir.length_squared() > 0.1 {
             let dir = dir.normalize();
             agent.dir = dir;
-            controller.translation = Some(dir * AGENT_SPEED * time.delta_seconds());
+            let xlation = dir * AGENT_SPEED * time.delta_seconds();
+            if use_grid.is_some() {
+                let pos = xform.translation().xy() + xlation.xy();
+                let (x, y) = pos_to_grid(pos.x, pos.y, GRID_CELL_SIZE);
+                let new_pos = Vec2::new(
+                    x as f32 * GRID_CELL_SIZE + 0.5,
+                    y as f32 * GRID_CELL_SIZE + 0.5,
+                );
+                controller.translation = Some(new_pos - xform.translation().xy());
+            } else {
+                controller.translation = Some(xlation);
+            }
             if let Some(anim_e) = anim_e {
                 if let Ok(mut anim) = anim_query.get_mut(anim_e) {
                     for child in children.iter() {

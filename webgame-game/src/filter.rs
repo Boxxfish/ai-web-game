@@ -151,7 +151,7 @@ fn update_filter_learned(
     }
 }
 
-fn pos_to_grid(x: f32, y: f32, cell_size: f32) -> (usize, usize) {
+pub fn pos_to_grid(x: f32, y: f32, cell_size: f32) -> (usize, usize) {
     (
         (x / cell_size).round() as usize,
         (y / cell_size).round() as usize,
