@@ -32,6 +32,7 @@ pub fn encode_obs(
     player_e: Entity,
     level: &Res<LevelLayout>,
     agent_state: &AgentState,
+    filter_probs: &Tensor,
 ) -> candle_core::Result<(Tensor, Tensor, Tensor)> {
     // Set up observations
     let player_obs = agent_state.objects.get(&player_e).unwrap();
@@ -89,7 +90,7 @@ pub fn encode_obs(
     for i in num_objs..attn_mask.len() {
         attn_mask[i] = 1.;
     }
-    let filter_probs = Tensor::zeros(walls.shape(), DType::F32, &device)?;
+    let filter_probs = filter_probs.reshape(&[level.size, level.size])?;
     let grid = Tensor::stack(
         &[
             &walls,

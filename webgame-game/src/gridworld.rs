@@ -15,7 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NeuralPolicy, NextAction, PlayerAgent, PursuerAgent},
+    agents::{Agent, AgentVisuals, NeuralPolicy, NextAction, PathfindingPolicy, PlayerAgent, PursuerAgent},
     configs::IsPlayable,
     filter::BayesFilter,
     observer::{DebugObserver, Observable, Observer, Wall},

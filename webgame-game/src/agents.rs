@@ -6,7 +6,7 @@ use candle_core::Tensor;
 use rand::distributions::Distribution;
 
 use crate::{
-    filter::pos_to_grid,
+    filter::{pos_to_grid, BayesFilter},
     gridworld::{LevelLayout, ShouldRun, GRID_CELL_SIZE},
     models::PolicyNet,
     net::{load_weights_into_net, NNWrapper},
@@ -102,6 +102,7 @@ pub fn update_observations(
     p_query: Query<(&Agent, &GlobalTransform, &Observer), With<PursuerAgent>>,
     time: Res<Time>,
     observable_query: Query<(Entity, &GlobalTransform), With<Observable>>,
+    filter_query: Query<&BayesFilter>,
     noise_query: Query<(Entity, &GlobalTransform, &NoiseSource)>,
     level: Res<LevelLayout>,
     player_query: Query<Entity, With<PlayerAgent>>,
@@ -119,8 +120,10 @@ pub fn update_observations(
                     &observable_query,
                     &noise_query,
                 );
-                let (grid, _, _) = encode_obs(player_e, &level, &agent_state).unwrap();
-                pursuer.observations = Some((grid, None, None));
+                let filter = filter_query.single();
+                let (grid, objs, objs_attn) =
+                    encode_obs(player_e, &level, &agent_state, &filter.probs).unwrap();
+                pursuer.observations = Some((grid, Some(objs), Some(objs_attn)));
                 pursuer.agent_state = Some(agent_state);
             }
         }
@@ -370,12 +373,17 @@ fn set_pursuer_action_pathfinding(
         (&mut NextAction, &mut PursuerAgent, &GlobalTransform),
         With<PathfindingPolicy>,
     >,
+    filter_query: Query<&BayesFilter>,
     player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
 ) {
     if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
         let p_net = net_query.single();
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
+                // Identify most probable tile
+                // let tile_idx = filter.probs.argmax(0).unwrap().to_scalar::<u32>().unwrap();
+                // info!("{}", tile_idx);
+
                 let action = 0;
                 let action_map = [
                     Vec2::ZERO,
