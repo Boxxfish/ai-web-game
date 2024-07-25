@@ -15,7 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    agents::{Agent, AgentVisuals, NextAction, PlayerAgent, PursuerAgent},
+    agents::{Agent, AgentVisuals, NeuralPolicy, NextAction, PlayerAgent, PursuerAgent},
     configs::IsPlayable,
     filter::BayesFilter,
     observer::{DebugObserver, Observable, Observer, Wall},
@@ -283,6 +283,7 @@ fn setup_entities(
                         0.,
                     ) * GRID_CELL_SIZE,
                 )),
+                NeuralPolicy,
                 Observer::default(),
                 Observable,
                 DebugObserver,

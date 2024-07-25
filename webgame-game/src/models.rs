@@ -1,4 +1,4 @@
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Tensor, D};
 use candle_nn::{self as nn, Module, VarBuilder};
 
 use crate::net::LoadableNN;
@@ -349,7 +349,7 @@ unsafe impl Sync for PolicyNet {}
 impl LoadableNN for PolicyNet {
     fn load(vb: VarBuilder) -> candle_core::Result<Self> {
         let channels = 10;
-        let size = 8;
+        let size = 16;
         let use_pos = true;
         let objs_shape = None;
         let proj_dim = 32;
@@ -365,8 +365,8 @@ impl LoadableNN for PolicyNet {
             vb.pp("backbone"),
         )?;
         
-        // Convert features into liklihood map
-        let net_vb = vb.pp("net");
+        let net1_vb = vb.pp("net1");
+        let net2_vb = vb.pp("net2");
         let net = nn::seq()
             .add(nn::conv2d(
                 proj_dim,
@@ -376,27 +376,26 @@ impl LoadableNN for PolicyNet {
                     padding: 3 / 2,
                     ..Default::default()
                 },
-                net_vb.pp("0"),
+                net1_vb.pp("0"),
             )?)
             .add(nn::Activation::Silu)
             .add(nn::conv2d(
                 32,
-                16,
+                128,
                 3,
                 nn::Conv2dConfig {
                     padding: 3 / 2,
                     ..Default::default()
                 },
-                net_vb.pp("2"),
+                net1_vb.pp("2"),
             )?)
             .add(nn::Activation::Silu)
-            .add_fn(|t| t.flatten(1, candle_core::D::Minus1))
-            .add(nn::linear(size * size * 16, 256, net_vb.pp("5"))?)
+            .add_fn(|t| t.max(D::Minus1)?.max(D::Minus1))
+            .add(nn::linear(128, 256, net2_vb.pp("0"))?)
             .add(nn::Activation::Silu)
-            .add(nn::linear(256, 256, net_vb.pp("7"))?)
+            .add(nn::linear(256, 256, net2_vb.pp("2"))?)
             .add(nn::Activation::Silu)
-            .add(nn::linear(256, action_count, net_vb.pp("9"))?);
-
+            .add(nn::linear(256, action_count, net2_vb.pp("4"))?);
         Ok(PolicyNet { net, backbone })
     }
 }

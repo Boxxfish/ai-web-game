@@ -42,7 +42,8 @@ impl Plugin for AgentPlayPlugin {
             (
                 (
                     set_player_action,
-                    set_pursuer_action,
+                    set_pursuer_action_neural,
+                    set_pursuer_action_pathfinding,
                     visualize_act_probs,
                     update_observations.after(update_vm_data),
                 )
@@ -85,6 +86,14 @@ impl Default for PursuerAgent {
         }
     }
 }
+
+/// Denotes that the Pursuer should be controlled by a neural network.
+#[derive(Component)]
+pub struct NeuralPolicy;
+
+/// Denotes that the Pursuer should use pathfinding.
+#[derive(Component)]
+pub struct PathfindingPolicy;
 
 /// Updates the Pursuer's observations.
 #[allow(clippy::too_many_arguments)]
@@ -282,10 +291,13 @@ fn set_player_action(
     }
 }
 
-/// Updates the Pursuer's next action.
-fn set_pursuer_action(
+/// Updates the Pursuer's next action with a neural policy.
+fn set_pursuer_action_neural(
     net_query: Query<&NNWrapper<PolicyNet>>,
-    mut pursuer_query: Query<(&mut NextAction, &mut PursuerAgent, &GlobalTransform)>,
+    mut pursuer_query: Query<
+        (&mut NextAction, &mut PursuerAgent, &GlobalTransform),
+        With<NeuralPolicy>,
+    >,
     player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
 ) {
     if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
@@ -346,6 +358,53 @@ fn set_pursuer_action(
                     next_action.dir = dir;
                     next_action.toggle_objs = false;
                 }
+            }
+        }
+    }
+}
+
+/// Updates the Pursuer's next action with a pathfinding policy.
+fn set_pursuer_action_pathfinding(
+    net_query: Query<&NNWrapper<PolicyNet>>,
+    mut pursuer_query: Query<
+        (&mut NextAction, &mut PursuerAgent, &GlobalTransform),
+        With<PathfindingPolicy>,
+    >,
+    player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
+) {
+    if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
+        let p_net = net_query.single();
+        if let Some(net) = &p_net.net {
+            if pursuer.obs_timer.just_finished() {
+                let action = 0;
+                let action_map = [
+                    Vec2::ZERO,
+                    Vec2::Y,
+                    (Vec2::Y + Vec2::X).normalize(),
+                    Vec2::X,
+                    (-Vec2::Y + Vec2::X).normalize(),
+                    -Vec2::Y,
+                    (-Vec2::Y + -Vec2::X).normalize(),
+                    -Vec2::X,
+                    (Vec2::Y + -Vec2::X).normalize(),
+                ];
+                let mut dir = action_map[action];
+
+                // Beeline towards player if in sight
+                let (player_e, player_xform) = player_query.single();
+                if pursuer
+                    .agent_state
+                    .as_ref()
+                    .unwrap()
+                    .observing
+                    .contains(&player_e)
+                {
+                    let offset = player_xform.translation().xy() - pursuer_xform.translation().xy();
+                    dir = offset.normalize();
+                }
+
+                next_action.dir = dir;
+                next_action.toggle_objs = false;
             }
         }
     }
