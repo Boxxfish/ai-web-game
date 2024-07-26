@@ -483,9 +483,8 @@ pub fn move_agents(
         if dir.length_squared() > 0.1 {
             let dir = dir.normalize();
             agent.dir = dir;
-            let xlation = dir * AGENT_SPEED * time.delta_seconds();
             if use_grid.is_some() {
-                let pos = xform.translation().xy() + xlation.xy();
+                let pos = xform.translation().xy() + dir * GRID_CELL_SIZE;
                 let (x, y) = pos_to_grid(pos.x, pos.y, GRID_CELL_SIZE);
                 let new_pos = Vec2::new(
                     x as f32 * GRID_CELL_SIZE + 0.5,
@@ -493,6 +492,7 @@ pub fn move_agents(
                 );
                 controller.translation = Some(new_pos - xform.translation().xy());
             } else {
+                let xlation = dir * AGENT_SPEED * time.delta_seconds();
                 controller.translation = Some(xlation);
             }
             if let Some(anim_e) = anim_e {
