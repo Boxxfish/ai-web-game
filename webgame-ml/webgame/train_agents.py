@@ -55,6 +55,7 @@ class Config:
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     entropy_coeff: float = 0.001  # Entropy bonus applied.
     gradient_clip: float = 0.1  # Gradient clipping for networks.
+    gradient_steps: int = 1 # Number of gradient steps, effectively increases the batch size.
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
@@ -280,6 +281,7 @@ if __name__ == "__main__":
                 cfg.epsilon,
                 entropy_coeff=cfg.entropy_coeff,
                 gradient_clip=cfg.gradient_clip,
+                gradient_steps=cfg.gradient_steps,
             )
             agents[agent].buffer.clear()
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
