@@ -1,4 +1,8 @@
-use std::{f32::consts::PI, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    f32::consts::PI,
+    time::Duration,
+};
 
 use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::control::KinematicCharacterController;
@@ -375,28 +379,61 @@ fn set_pursuer_action_pathfinding(
     >,
     filter_query: Query<&BayesFilter>,
     player_query: Query<(Entity, &GlobalTransform), With<PlayerAgent>>,
+    level: Res<LevelLayout>,
 ) {
     if let Ok((mut next_action, mut pursuer, pursuer_xform)) = pursuer_query.get_single_mut() {
         let p_net = net_query.single();
         if let Some(net) = &p_net.net {
             if pursuer.obs_timer.just_finished() {
                 // Identify most probable tile
-                // let tile_idx = filter.probs.argmax(0).unwrap().to_scalar::<u32>().unwrap();
-                // info!("{}", tile_idx);
+                let tile_idx = filter_query
+                    .single()
+                    .probs
+                    .flatten(0, 1)
+                    .unwrap()
+                    .argmax(0)
+                    .unwrap()
+                    .to_scalar::<u32>()
+                    .unwrap() as usize;
+                let x = tile_idx % level.size;
+                let y = tile_idx / level.size;
 
-                let action = 0;
-                let action_map = [
-                    Vec2::ZERO,
-                    Vec2::Y,
-                    (Vec2::Y + Vec2::X).normalize(),
-                    Vec2::X,
-                    (-Vec2::Y + Vec2::X).normalize(),
-                    -Vec2::Y,
-                    (-Vec2::Y + -Vec2::X).normalize(),
-                    -Vec2::X,
-                    (Vec2::Y + -Vec2::X).normalize(),
-                ];
-                let mut dir = action_map[action];
+                // Pathfind from current tile to target tile
+                let mut queue = VecDeque::new();
+                let mut parents = HashMap::new();
+                let xlation = pursuer_xform.translation();
+                let goal_pos = pos_to_grid(xlation.x, xlation.y, GRID_CELL_SIZE);
+                queue.push_back((x, y));
+                loop {
+                    let curr_tile = queue.pop_front().unwrap();
+                    if curr_tile == goal_pos {
+                        break;
+                    }
+                    let neighbors = [
+                        (curr_tile.0 as i32 + 1, curr_tile.1 as i32),
+                        (curr_tile.0 as i32 - 1, curr_tile.1 as i32),
+                        (curr_tile.0 as i32, curr_tile.1 as i32 + 1),
+                        (curr_tile.0 as i32, curr_tile.1 as i32 - 1),
+                    ];
+                    for n in neighbors {
+                        if n.0 > 0
+                            && n.0 < level.size as i32 - 1
+                            && n.1 > 0
+                            && n.1 < level.size as i32 - 1
+                            && !level.walls[n.1 as usize * level.size + n.0 as usize]
+                            && !parents.contains_key(&n)
+                        {
+                            queue.push_back((n.0 as usize, n.1 as usize));
+                            parents.insert(n, curr_tile);
+                        }
+                    }
+                }
+                let next_tile = parents
+                    .get(&(goal_pos.0 as i32, goal_pos.1 as i32))
+                    .unwrap();
+                let mut dir = Vec2::new(next_tile.0 as f32, next_tile.1 as f32) * GRID_CELL_SIZE + 0.5
+                    - pursuer_xform.translation().xy();
+                dir = dir.normalize();
 
                 // Beeline towards player if in sight
                 let (player_e, player_xform) = player_query.single();
