@@ -283,7 +283,7 @@ fn setup_entities(
                         0.,
                     ) * GRID_CELL_SIZE,
                 )),
-                PathfindingPolicy,
+                NeuralPolicy,
                 Observer::default(),
                 Observable,
                 DebugObserver,
