@@ -19,7 +19,7 @@ from safetensors.torch import save_model, load_model
 from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
 from webgame.algorithms.rollout_buffer import RolloutBuffer
-from webgame.common import convert_obs, process_obs
+from webgame.common import convert_obs, explore_policy, process_obs
 from webgame.conf import entity
 from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
 from webgame.filter import gt_update, manual_update, model_update
@@ -290,49 +290,53 @@ if __name__ == "__main__":
         # Evaluate agents
         if step % cfg.eval_every == 0:
             with torch.no_grad():
-                # Visualize
-                reward_total = {agent: 0.0 for agent in env.agents}
-                entropy_total = {agent: 0.0 for agent in env.agents}
-                for _ in range(cfg.eval_steps):
-                    avg_entropy = {agent: 0.0 for agent in env.agents}
-                    steps_taken = 0
-                    obs_ = test_env.reset()[0]
-                    eval_obs = {
-                        agent: convert_obs(obs_[agent], True) for agent in env.agents
-                    }
-                    for _ in range(cfg.max_eval_steps):
-                        all_actions = {}
-                        all_distrs = {}
-                        for agent in env.agents:
-                            distr = Categorical(
-                                logits=agents[agent].p_net(*eval_obs[agent]).squeeze()
-                            )
-                            all_distrs[agent] = distr
-                            action = distr.sample().item()
-                            all_actions[agent] = action
-                        obs_, reward, eval_done, _, _ = test_env.step(all_actions)
+                for use_explore in [False, True]:
+                    reward_total = {agent: 0.0 for agent in env.agents}
+                    entropy_total = {agent: 0.0 for agent in env.agents}
+                    for _ in range(cfg.eval_steps):
+                        avg_entropy = {agent: 0.0 for agent in env.agents}
+                        steps_taken = 0
+                        obs_ = test_env.reset()[0]
                         eval_obs = {
-                            agent: convert_obs(obs_[agent], True)
-                            for agent in env.agents
+                            agent: convert_obs(obs_[agent], True) for agent in env.agents
                         }
-                        steps_taken += 1
+                        for _ in range(cfg.max_eval_steps):
+                            all_actions = {}
+                            all_distrs = {}
+                            for agent in env.agents:
+                                distr = Categorical(
+                                    logits=agents[agent].p_net(*eval_obs[agent]).squeeze()
+                                )
+                                all_distrs[agent] = distr
+                                action = distr.sample().item()
+                                all_actions[agent] = action
+                            if use_explore:
+                                assert test_env.game_state
+                                all_actions["player"] = explore_policy(test_env.game_state, False)
+                            obs_, reward, eval_done, _, _ = test_env.step(all_actions)
+                            eval_obs = {
+                                agent: convert_obs(obs_[agent], True)
+                                for agent in env.agents
+                            }
+                            steps_taken += 1
+                            for agent in env.agents:
+                                reward_total[agent] += reward[agent]
+                                avg_entropy[agent] += all_distrs[agent].entropy()
+                            if eval_done:
+                                break
                         for agent in env.agents:
-                            reward_total[agent] += reward[agent]
-                            avg_entropy[agent] += all_distrs[agent].entropy()
-                        if eval_done:
-                            break
+                            avg_entropy[agent] /= steps_taken
+                            entropy_total[agent] += avg_entropy[agent]
+                    prefix = "baseline_" if use_explore else ""
                     for agent in env.agents:
-                        avg_entropy[agent] /= steps_taken
-                        entropy_total[agent] += avg_entropy[agent]
-                for agent in env.agents:
-                    log_dict.update(
-                        {
-                            f"{agent}_avg_eval_episode_return": reward_total[agent]
-                            / cfg.eval_steps,
-                            f"{agent}_avg_eval_entropy": entropy_total[agent]
-                            / cfg.eval_steps,
-                        }
-                    )
+                        log_dict.update(
+                            {
+                                f"{prefix}{agent}_avg_eval_episode_return": reward_total[agent]
+                                / cfg.eval_steps,
+                                f"{prefix}{agent}_avg_eval_entropy": entropy_total[agent]
+                                / cfg.eval_steps,
+                            }
+                        )
 
         wandb.log(log_dict)
 
