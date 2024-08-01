@@ -27,6 +27,7 @@ from webgame.models import Backbone, MeasureModel, PolicyNet
 
 _: Any
 
+torch.tensor([1], device="cuda")
 
 @dataclass
 class Config:

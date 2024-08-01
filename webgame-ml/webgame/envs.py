@@ -184,8 +184,8 @@ class GameEnv(pettingzoo.ParallelEnv):
         Generates observations for an agent.
         """
         obs_vec = np.zeros([7], dtype=float)
-        obs_vec[0] = 0.5 + agent_state.pos.x / (game_state.level_size * CELL_SIZE)
-        obs_vec[1] = 0.5 + agent_state.pos.y / (game_state.level_size * CELL_SIZE)
+        obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (game_state.level_size * CELL_SIZE)
+        obs_vec[1] = (0.5 * CELL_SIZE + agent_state.pos.y) / (game_state.level_size * CELL_SIZE)
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
 
@@ -195,8 +195,8 @@ class GameEnv(pettingzoo.ParallelEnv):
         )[0]
         if other_e in agent_state.observing:
             obs_vec[4] = 1
-            obs_vec[5] = 0.5 + other_obs.pos.x / (game_state.level_size * CELL_SIZE)
-            obs_vec[6] = 0.5 + other_obs.pos.y / (game_state.level_size * CELL_SIZE)
+            obs_vec[5] = (0.5 * CELL_SIZE + other_obs.pos.x) / (game_state.level_size * CELL_SIZE)
+            obs_vec[6] = (0.5 * CELL_SIZE + other_obs.pos.y) / (game_state.level_size * CELL_SIZE)
 
         walls = np.array(game_state.walls, dtype=float).reshape(
             (game_state.level_size, game_state.level_size)
