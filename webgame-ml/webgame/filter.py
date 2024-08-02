@@ -257,9 +257,9 @@ if __name__ == "__main__":
         use_pos: bool,
         use_objs: bool,
     ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
-        channels = 9
+        channels = 6
         if args.player_sees_visible_cells:
-            channels = 10
+            channels = 7
         p_net = PolicyNet(
             channels,
             16,
@@ -290,6 +290,7 @@ if __name__ == "__main__":
         visualize=True,
         recording_id=recording_id,
         player_sees_visible_cells=args.player_sees_visible_cells,
+        update_fn=manual_update,
     )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
@@ -338,23 +339,23 @@ if __name__ == "__main__":
             action = policies[agent](agent, env, obs[agent])
             actions[agent] = action
         obs_, rew, done, trunc, info = env.step(actions)
-        # if done["pursuer"]:
-        #     obs_ = env.reset()[0]
-        #     b_filter = BayesFilter(
-        #         env.game_state.level_size,
-        #         CELL_SIZE,
-        #         update_fn,
-        #         args.use_objs,
-        #         True,
-        #         args.lkhd_min,
-        #     )
-        #     if args.start_gt:
-        #         b_filter.belief = np.zeros(b_filter.belief.shape)
-        #         play_pos = env.game_state.player.pos
-        #         x, y = pos_to_grid(
-        #             play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
-        #         )
-        #         b_filter.belief[y, x] = 1
+        if done["pursuer"]:
+            obs_ = env.reset()[0]
+            b_filter = BayesFilter(
+                env.game_state.level_size,
+                CELL_SIZE,
+                update_fn,
+                args.use_objs,
+                True,
+                args.lkhd_min,
+            )
+            if args.start_gt:
+                b_filter.belief = np.zeros(b_filter.belief.shape)
+                play_pos = env.game_state.player.pos
+                x, y = pos_to_grid(
+                    play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
+                )
+                b_filter.belief[y, x] = 1
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
 
         game_state = env.game_state
@@ -396,3 +397,5 @@ if __name__ == "__main__":
             timeless=False,
         )
         rr.log("filter/filter_obs", rr.Tensor(filter_obs[0]), timeless=False)
+        rr.log("agent/pursuer_obs", rr.Tensor(obs["pursuer"][0]), timeless=False)
+        rr.log("agent/player_obs", rr.Tensor(obs["player"][0]), timeless=False)

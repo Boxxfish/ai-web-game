@@ -79,18 +79,14 @@ class ValueNet(nn.Module):
         objs_shape: Optional[Tuple[int, int]] = None,
     ):
         super().__init__()
-        proj_dim = 32
+        proj_dim = 64
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
         self.net1 = nn.Sequential(
-            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
-            nn.SiLU(),
-            nn.Conv2d(32, 128, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(proj_dim, 128, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
         )
         self.net2 = nn.Sequential(
             nn.Linear(128, 256),
-            nn.SiLU(),
-            nn.Linear(256, 256),
             nn.SiLU(),
             nn.Linear(256, 1),
         )
@@ -221,9 +217,9 @@ if __name__ == "__main__":
     )
 
     # Initialize policy and value networks
-    channels = 9
+    channels = 6
     if cfg.player_sees_visible_cells:
-        channels = 10
+        channels = 7
     grid_size = 16
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM

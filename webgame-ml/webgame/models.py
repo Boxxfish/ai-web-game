@@ -29,14 +29,14 @@ class Backbone(nn.Module):
                 else nn.Identity()
             ),
             nn.SiLU(),
-            nn.Conv2d(mid_channels, mid_channels, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(mid_channels, mid_channels * 2, 3, padding="same", dtype=torch.float),
             (
-                nn.BatchNorm2d(mid_channels, dtype=torch.float)
+                nn.BatchNorm2d(mid_channels * 2, dtype=torch.float)
                 if use_bn
                 else nn.Identity()
             ),
             nn.SiLU(),
-            nn.Conv2d(mid_channels, out_channels, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(mid_channels * 2, out_channels, 3, padding="same", dtype=torch.float),
             (
                 nn.BatchNorm2d(out_channels, dtype=torch.float)
                 if use_bn
@@ -186,18 +186,16 @@ class PolicyNet(nn.Module):
         objs_shape: Optional[Tuple[int, int]] = None,
     ):
         super().__init__()
-        proj_dim = 16
+        proj_dim = 64
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
         self.net1 = nn.Sequential(
-            nn.Conv2d(proj_dim, 64, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(proj_dim, 128, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
         )
         self.net2 = nn.Sequential(
-            nn.Linear(64, 64),
+            nn.Linear(128, 256),
             nn.SiLU(),
-            nn.Linear(64, 64),
-            nn.SiLU(),
-            nn.Linear(64, action_count),
+            nn.Linear(256, action_count),
         )
 
     def forward(

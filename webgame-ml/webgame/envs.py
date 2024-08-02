@@ -33,9 +33,6 @@ class GameEnv(pettingzoo.ParallelEnv):
         1: This agent's y coordinate, normalized between 0 and 1
         2: This agent's direction vector's x coordinate, normalized
         3: This agent's direction vector's y coordinate, normalized
-        4: 1 if the other agent is visible, 0 if not
-        5: If the other agent is visible, the other agent's x coordinate divided by map size
-        6: If the other agent is visible, the other agent's y coordinate divided by map size
 
         , the second item is a 2D map showing where walls are, the third item is a list of items detected by the agent,
         and the fourth item is an attention mask for the previous item.
@@ -191,20 +188,11 @@ class GameEnv(pettingzoo.ParallelEnv):
         """
         Generates observations for an agent.
         """
-        obs_vec = np.zeros([7], dtype=float)
+        obs_vec = np.zeros([4], dtype=float)
         obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (game_state.level_size * CELL_SIZE)
         obs_vec[1] = (0.5 * CELL_SIZE + agent_state.pos.y) / (game_state.level_size * CELL_SIZE)
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
-
-        other_agent = ["pursuer", "player"][int(is_pursuer)]
-        other_e, other_obs = list(
-            filter(lambda t: t[1].obj_type == other_agent, game_state.objects.items())
-        )[0]
-        if other_e in agent_state.observing:
-            obs_vec[4] = 1
-            obs_vec[5] = (0.5 * CELL_SIZE + other_obs.pos.x) / (game_state.level_size * CELL_SIZE)
-            obs_vec[6] = (0.5 * CELL_SIZE + other_obs.pos.y) / (game_state.level_size * CELL_SIZE)
 
         walls = np.array(game_state.walls, dtype=float).reshape(
             (game_state.level_size, game_state.level_size)
