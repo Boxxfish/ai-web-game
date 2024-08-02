@@ -7,6 +7,7 @@ from tqdm import tqdm
 from webgame_rust import AgentState, GameWrapper, GameState
 import numpy as np
 import functools
+import math
 
 from webgame.common import pos_to_grid, process_obs
 from webgame.filter import BayesFilter
@@ -68,6 +69,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         ] = None,
         insert_visible_cells: bool = False,
         player_sees_visible_cells: bool = False,
+        aux_rew_amount: float = 0.0,
     ):
         self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -80,6 +82,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.filters: Optional[Dict[str, BayesFilter]] = None
         self.insert_visible_cells = insert_visible_cells
         self.player_sees_visible_cells = player_sees_visible_cells
+        self.aux_rew_amount = aux_rew_amount
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -104,8 +107,13 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.timer += 1
         trunc = self.timer == self.max_timer
 
+        player_pos = self.game_state.player.pos
+        dx = (0.5 * CELL_SIZE + player_pos.x) - (self.game_state.level_size * CELL_SIZE / 2)
+        dy = (0.5 * CELL_SIZE + player_pos.y) - (self.game_state.level_size * CELL_SIZE / 2)
+        player_aux_rew = -math.sqrt(dx**2 + dy**2) / math.sqrt(((self.game_state.level_size * CELL_SIZE / 2)**2) * 2)
+
         rewards = {
-            "player": -float(seen_player),
+            "player": -float(seen_player) + player_aux_rew * self.aux_rew_amount,
             "pursuer": float(seen_player),
         }
         dones = {

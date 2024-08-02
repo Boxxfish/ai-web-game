@@ -66,6 +66,7 @@ class Config:
     )
     checkpoint_player: str = "" # Player checkpoint to continue from.
     checkpoint_pursuer: str = "" # Pursuer checkpoint to continue from.
+    aux_rew_amount: float = 0.0
     device: str = "cuda"  # Device to use during training.
 
 
@@ -207,6 +208,7 @@ if __name__ == "__main__":
                 cfg.wall_prob,
                 max_timer=cfg.max_timer,
                 player_sees_visible_cells=cfg.player_sees_visible_cells,
+                aux_rew_amount=cfg.aux_rew_amount
             )
             for _ in range(cfg.num_envs)
         ]

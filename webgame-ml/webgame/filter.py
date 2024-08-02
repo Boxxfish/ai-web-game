@@ -388,7 +388,6 @@ if __name__ == "__main__":
             True,
         )
         probs = b_filter.localize(filter_obs, game_state, agent_state)
-        print(filter_obs[0][0, 0, 0, 0], filter_obs[0][0, 1, 0, 0])
         rr.log("filter/belief", rr.Tensor(probs), timeless=False)
         rr.log("filter/measurement_likelihood", rr.Tensor(lkhd), timeless=False)
         rr.log(
