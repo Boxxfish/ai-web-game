@@ -82,11 +82,11 @@ class ValueNet(nn.Module):
         proj_dim = 64
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
         self.net1 = nn.Sequential(
-            nn.Conv2d(proj_dim, 128, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(proj_dim, 64, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
         )
         self.net2 = nn.Sequential(
-            nn.Linear(128, 256),
+            nn.Linear(64, 256),
             nn.SiLU(),
             nn.Linear(256, 1),
         )
@@ -115,10 +115,10 @@ class AgentData:
         act_count: int,
     ):
         self.v_net = ValueNet(
-            channels,
+            channels * 2,
             grid_size,
             cfg.use_pos,
-            (max_objs, obj_dim) if cfg.use_objs else None,
+            (max_objs * 2, obj_dim) if cfg.use_objs else None,
         )
         self.p_net = PolicyNet(
             channels,
@@ -266,12 +266,17 @@ if __name__ == "__main__":
         # Train
         log_dict = {}
         for agent in env.agents:
+            other_agent = {
+                "player": "pursuer",
+                "pursuer": "player",
+            }[agent]
             total_p_loss, total_v_loss = train_ppo(
                 agents[agent].p_net,
                 agents[agent].v_net,
                 agents[agent].p_opt,
                 agents[agent].v_opt,
                 agents[agent].buffer,
+                agents[other_agent].buffer,
                 device,
                 cfg.train_iters,
                 cfg.train_batch_size,

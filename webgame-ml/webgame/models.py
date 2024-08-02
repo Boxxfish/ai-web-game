@@ -189,11 +189,11 @@ class PolicyNet(nn.Module):
         proj_dim = 64
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
         self.net1 = nn.Sequential(
-            nn.Conv2d(proj_dim, 128, 3, padding="same", dtype=torch.float),
+            nn.Conv2d(proj_dim, 64, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
         )
         self.net2 = nn.Sequential(
-            nn.Linear(128, 256),
+            nn.Linear(64, 256),
             nn.SiLU(),
             nn.Linear(256, action_count),
         )
