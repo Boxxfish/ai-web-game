@@ -239,6 +239,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--player-sees-visible-cells", default=False, action="store_true"
     )
+    parser.add_argument("--grid-size", type=int, default=8)
     args = parser.parse_args()
 
     def heuristic_policy(
@@ -262,7 +263,7 @@ if __name__ == "__main__":
             channels = 7
         p_net = PolicyNet(
             channels,
-            16,
+            args.grid_size,
             action_count,
             use_pos,
             (MAX_OBJS, OBJ_DIM) if use_objs else None,
@@ -291,6 +292,7 @@ if __name__ == "__main__":
         recording_id=recording_id,
         player_sees_visible_cells=args.player_sees_visible_cells,
         update_fn=manual_update,
+        grid_size=args.grid_size,
     )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}

@@ -67,8 +67,9 @@ class GameEnv(pettingzoo.ParallelEnv):
         insert_visible_cells: bool = False,
         player_sees_visible_cells: bool = False,
         aux_rew_amount: float = 0.0,
+        grid_size: int = 8,
     ):
-        self.game = GameWrapper(use_objs, wall_prob, visualize, recording_id)
+        self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id)
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]
@@ -80,6 +81,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.insert_visible_cells = insert_visible_cells
         self.player_sees_visible_cells = player_sees_visible_cells
         self.aux_rew_amount = aux_rew_amount
+        self.grid_size = grid_size
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -176,7 +178,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         return gym.spaces.Tuple(
             (
                 gym.spaces.Box(0, 1, (7,)),
-                gym.spaces.Box(0, 1, (grid_channels, 16, 16)),
+                gym.spaces.Box(0, 1, (grid_channels, self.grid_size, self.grid_size)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
             )

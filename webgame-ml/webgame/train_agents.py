@@ -67,6 +67,7 @@ class Config:
     checkpoint_player: str = "" # Player checkpoint to continue from.
     checkpoint_pursuer: str = "" # Pursuer checkpoint to continue from.
     aux_rew_amount: float = 0.0
+    grid_size: int = 8
     device: str = "cuda"  # Device to use during training.
 
 
@@ -202,6 +203,7 @@ if __name__ == "__main__":
             lambda: GameEnv(
                 cfg.use_objs,
                 cfg.wall_prob,
+                cfg.grid_size,
                 max_timer=cfg.max_timer,
                 player_sees_visible_cells=cfg.player_sees_visible_cells,
                 aux_rew_amount=cfg.aux_rew_amount
@@ -212,6 +214,7 @@ if __name__ == "__main__":
     test_env = GameEnv(
         cfg.use_objs,
         cfg.wall_prob,
+        cfg.grid_size,
         max_timer=cfg.max_timer,
         player_sees_visible_cells=cfg.player_sees_visible_cells,
     )
@@ -220,7 +223,7 @@ if __name__ == "__main__":
     channels = 6
     if cfg.player_sees_visible_cells:
         channels = 7
-    grid_size = 16
+    grid_size = cfg.grid_size
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
     act_space = env.action_space(env.agents[0])

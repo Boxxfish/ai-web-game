@@ -6,7 +6,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     agents::{Agent, NextAction, PlayerAgent, PursuerAgent, UseGridPositions},
     configs::{LibCfgPlugin, VisualizerPlugin},
-    gridworld::{LevelLayout, ResetEvent, DEFAULT_LEVEL_SIZE, GRID_CELL_SIZE},
+    gridworld::{LevelLayout, ResetEvent, GRID_CELL_SIZE},
     observations::fill_tri_half,
     observer::{Observable, Observer},
     screens::ScreenState,
@@ -133,6 +133,7 @@ pub struct GameWrapper {
     pub wall_prob: f64,
     pub visualize: bool,
     pub recording_id: Option<String>,
+    pub grid_size: usize,
 }
 
 #[pymethods]
@@ -141,6 +142,7 @@ impl GameWrapper {
     pub fn new(
         use_objs: bool,
         wall_prob: f64,
+        grid_size: usize,
         visualize: bool,
         recording_id: Option<String>,
     ) -> Self {
@@ -148,9 +150,9 @@ impl GameWrapper {
         app.add_plugins(LibCfgPlugin);
         app.insert_state(ScreenState::Game);
         app.insert_resource(LevelLayout::random(
-            DEFAULT_LEVEL_SIZE,
+            grid_size,
             wall_prob,
-            if use_objs { DEFAULT_LEVEL_SIZE } else { 0 },
+            if use_objs { grid_size } else { 0 },
         ));
         app.insert_resource(UseGridPositions);
 
@@ -170,6 +172,7 @@ impl GameWrapper {
             recording_id,
             use_objs,
             wall_prob,
+            grid_size,
         }
     }
 
@@ -185,9 +188,9 @@ impl GameWrapper {
     pub fn reset(&mut self) -> GameState {
         self.app.world.send_event(ResetEvent {
             level: LevelLayout::random(
-                DEFAULT_LEVEL_SIZE,
+                self.grid_size,
                 self.wall_prob,
-                if self.use_objs { DEFAULT_LEVEL_SIZE } else { 0 },
+                if self.use_objs { self.grid_size } else { 0 },
             ),
         });
         self.app.update();
@@ -380,7 +383,7 @@ impl GameWrapper {
 
 impl Default for GameWrapper {
     fn default() -> Self {
-        Self::new(false, 0.1, false, None)
+        Self::new(false, 0.1, 8, false, None)
     }
 }
 
