@@ -111,9 +111,14 @@ class GameEnv(pettingzoo.ParallelEnv):
         dy = (0.5 * CELL_SIZE + player_pos.y) - (self.game_state.level_size * CELL_SIZE / 2)
         player_aux_rew = -math.sqrt(dx**2 + dy**2) / math.sqrt(((self.game_state.level_size * CELL_SIZE / 2)**2) * 2)
 
+        pursuer_pos = self.game_state.pursuer.pos
+        dx = player_pos.x - pursuer_pos.x
+        dy = player_pos.y - pursuer_pos.y
+        pursuer_aux_rew = math.sqrt(dx**2 + dy**2) / math.sqrt(((self.game_state.level_size * CELL_SIZE)**2) * 2)
+
         rewards = {
             "player": -float(seen_player) + player_aux_rew * self.aux_rew_amount,
-            "pursuer": float(seen_player),
+            "pursuer": float(seen_player) + pursuer_aux_rew * self.aux_rew_amount,
         }
         dones = {
             "player": seen_player,
