@@ -123,7 +123,7 @@ def manual_update(
                 agent_lkhd = agent_lkhd / (size**2 - sum(agent_state.visible_cells))
 
                 # If any noise sources are triggered, make the likelihood a normal distribution centered on it
-                pos = np.array([x, y], dtype=float) * CELL_SIZE
+                pos = np.array([x, y], dtype=float) * cell_size
                 for obj_id in agent_state.listening:
                     noise_obj = game_state.noise_sources[obj_id]
                     mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
@@ -135,7 +135,7 @@ def manual_update(
 
                 # If any visual markers are moved, we can localize the player based on its start position, end position,
                 # and how long it's been since the pursuer last looked at it
-                max_speed = CELL_SIZE
+                max_speed = cell_size
                 for obj_id in agent_state.observing:
                     if obj_id in agent_state.vm_data:
                         vm_data = agent_state.vm_data[obj_id]
@@ -202,7 +202,7 @@ def gt_update(
     is_pursuer: bool,
 ) -> np.ndarray:
     player_pos = game_state.player.pos
-    grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, CELL_SIZE)
+    grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, cell_size)
     lkhd = np.zeros([size, size])
     lkhd[grid_pos[1], grid_pos[0]] = 1
     kernel = np.array([[0.1, 0.1, 0.1], [0.1, 1, 0.1], [0.1, 0.1, 0.1]])

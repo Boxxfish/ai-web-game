@@ -45,7 +45,7 @@ class Config:
     lambda_: float = 0.95  # Lambda for GAE.
     epsilon: float = 0.2  # Epsilon for importance sample clipping.
     max_eval_steps: int = 500  # Max number of steps to take during each eval run.
-    eval_steps: int = 8  # Number of eval runs to average over.
+    eval_steps: int = 32  # Number of eval runs to average over.
     v_lr: float = 0.01  # Learning rate of the value net.
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
@@ -203,10 +203,11 @@ if __name__ == "__main__":
             lambda: GameEnv(
                 cfg.use_objs,
                 cfg.wall_prob,
-                cfg.grid_size,
+                grid_size=cfg.grid_size,
                 max_timer=cfg.max_timer,
                 player_sees_visible_cells=cfg.player_sees_visible_cells,
-                aux_rew_amount=cfg.aux_rew_amount
+                aux_rew_amount=cfg.aux_rew_amount,
+                update_fn=update_fn
             )
             for _ in range(cfg.num_envs)
         ]
@@ -214,9 +215,10 @@ if __name__ == "__main__":
     test_env = GameEnv(
         cfg.use_objs,
         cfg.wall_prob,
-        cfg.grid_size,
+        grid_size=cfg.grid_size,
         max_timer=cfg.max_timer,
         player_sees_visible_cells=cfg.player_sees_visible_cells,
+        update_fn=update_fn
     )
 
     # Initialize policy and value networks
