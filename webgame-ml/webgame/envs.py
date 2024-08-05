@@ -109,14 +109,22 @@ class GameEnv(pettingzoo.ParallelEnv):
         trunc = self.timer == self.max_timer
 
         player_pos = self.game_state.player.pos
-        dx = (0.5 * CELL_SIZE + player_pos.x) - (self.game_state.level_size * CELL_SIZE / 2)
-        dy = (0.5 * CELL_SIZE + player_pos.y) - (self.game_state.level_size * CELL_SIZE / 2)
-        player_aux_rew = -math.sqrt(dx**2 + dy**2) / math.sqrt(((self.game_state.level_size * CELL_SIZE / 2)**2) * 2)
+        dx = (0.5 * CELL_SIZE + player_pos.x) - (
+            self.game_state.level_size * CELL_SIZE / 2
+        )
+        dy = (0.5 * CELL_SIZE + player_pos.y) - (
+            self.game_state.level_size * CELL_SIZE / 2
+        )
+        player_aux_rew = -math.sqrt(dx**2 + dy**2) / math.sqrt(
+            ((self.game_state.level_size * CELL_SIZE / 2) ** 2) * 2
+        )
 
         pursuer_pos = self.game_state.pursuer.pos
         dx = player_pos.x - pursuer_pos.x
         dy = player_pos.y - pursuer_pos.y
-        pursuer_aux_rew = math.sqrt(dx**2 + dy**2) / math.sqrt(((self.game_state.level_size * CELL_SIZE)**2) * 2)
+        pursuer_aux_rew = math.sqrt(dx**2 + dy**2) / math.sqrt(
+            ((self.game_state.level_size * CELL_SIZE) ** 2) * 2
+        )
 
         rewards = {
             "player": -float(seen_player) + player_aux_rew * self.aux_rew_amount,
@@ -141,7 +149,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         Mapping[str, None],
     ]:
         self.game_state = self.game.reset()
+        while not self.check_path():
+            self.game_state = self.game.reset()
         assert self.game_state
+
         self.timer = 0
         if self.update_fn:
             self.filters = {
@@ -155,7 +166,9 @@ class GameEnv(pettingzoo.ParallelEnv):
                 for agent in self.agents
             }
             if self.start_gt:
-                self.filters["pursuer"].belief = np.zeros(self.filters["pursuer"].belief.shape)
+                self.filters["pursuer"].belief = np.zeros(
+                    self.filters["pursuer"].belief.shape
+                )
                 play_pos = self.game_state.player.pos
                 x, y = pos_to_grid(
                     play_pos.x, play_pos.y, self.game_state.level_size, CELL_SIZE
@@ -205,8 +218,12 @@ class GameEnv(pettingzoo.ParallelEnv):
         Generates observations for an agent.
         """
         obs_vec = np.zeros([4], dtype=float)
-        obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (game_state.level_size * CELL_SIZE)
-        obs_vec[1] = (0.5 * CELL_SIZE + agent_state.pos.y) / (game_state.level_size * CELL_SIZE)
+        obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (
+            game_state.level_size * CELL_SIZE
+        )
+        obs_vec[1] = (0.5 * CELL_SIZE + agent_state.pos.y) / (
+            game_state.level_size * CELL_SIZE
+        )
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
 
@@ -248,11 +265,13 @@ class GameEnv(pettingzoo.ParallelEnv):
         attn_mask[len(agent_state.observing) + len(agent_state.listening) :] = 1
 
         agent_name = ["player", "pursuer"][int(is_pursuer)]
-        
+
         if self.player_sees_visible_cells and not is_pursuer:
             loc_channel = np.zeros(walls.shape, dtype=float)
             pursuer_pos = game_state.pursuer.pos
-            x, y = pos_to_grid(pursuer_pos.x, pursuer_pos.y, game_state.level_size, CELL_SIZE)
+            x, y = pos_to_grid(
+                pursuer_pos.x, pursuer_pos.y, game_state.level_size, CELL_SIZE
+            )
             loc_channel[y, x] = 1
             visible_cells = game_state.pursuer.visible_cells
             cells_channel = np.array(visible_cells).reshape(
@@ -283,12 +302,68 @@ class GameEnv(pettingzoo.ParallelEnv):
                     [game_state.level_size, game_state.level_size]
                 )
             if self.player_sees_visible_cells:
-                grid = np.stack([walls, extra_channel, np.zeros(walls.shape, dtype=float)])
+                grid = np.stack(
+                    [walls, extra_channel, np.zeros(walls.shape, dtype=float)]
+                )
             else:
                 grid = np.stack([walls, extra_channel])
 
         return (obs_vec, grid, obs_vecs, attn_mask)
 
+    def check_path(self) -> bool:
+        assert self.game_state
+        player_pos = self.game_state.player.pos
+        start_pos = pos_to_grid(
+            player_pos.x, player_pos.y, self.game_state.level_size, CELL_SIZE
+        )
+        pursuer_pos = self.game_state.pursuer.pos
+        target_pos = pos_to_grid(
+            pursuer_pos.x, pursuer_pos.y, self.game_state.level_size, CELL_SIZE
+        )
+
+        queue = [start_pos]
+        parents: Dict[tuple[int, int], tuple[int, int]] = {}
+        while len(queue) > 0:
+            curr_pos = queue.pop(0)
+            neighbors_delta = [
+                (1, 0),
+                (1, -1),
+                (1, 1),
+                (-1, 0),
+                (-1, -1),
+                (-1, 1),
+                (0, 1),
+                (-1, 1),
+                (1, 1),
+                (0, -1),
+                (-1, -1),
+                (1, -1),
+            ]
+            finished = False
+            for n_delta in neighbors_delta:
+                neighbor = (curr_pos[0] + n_delta[0], curr_pos[1] + n_delta[1])
+                def is_wall(pos: tuple[int, int]) -> bool:
+                    assert self.game_state
+                    if (
+                        pos[0] < 0
+                        or pos[0] >= self.game_state.level_size
+                        or pos[1] < 0
+                        or pos[1] >= self.game_state.level_size
+                    ):
+                        return True
+                    return self.game_state.walls[
+                        pos[1] * self.game_state.level_size + pos[0]
+                    ]
+                if not is_wall(neighbor) and neighbor not in parents.keys():
+                    queue.append(neighbor)
+                    parents[neighbor] = curr_pos
+                    if neighbor == target_pos:
+                        finished = True
+                        break
+            if finished:
+                break
+
+        return target_pos in parents.keys()
 
 if __name__ == "__main__":
     env = GameEnv(visualize=False)

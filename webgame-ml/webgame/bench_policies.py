@@ -29,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--lkhd-min", type=float, default=0.0)
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     parser.add_argument("--start-gt", default=False, action="store_true")
+    parser.add_argument("--use-pathfinding", default=False, action="store_true")
     parser.add_argument(
         "--player-sees-visible-cells", default=False, action="store_true"
     )
@@ -45,18 +46,24 @@ if __name__ == "__main__":
             assert env.game_state
             action = explore_policy(env.game_state, agent == "pursuer")
         return action
-    
+
     def pathfinding_policy(
         agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     ) -> int:
-        probs = obs[0][-2]
+        if args.player_sees_visible_cells:
+            idx = -2
+        else:
+            idx = -1
+        probs = obs[0].squeeze(0)[idx]
         max_idx = probs.flatten().argmax()
         assert env.game_state
         y = int(max_idx) // env.game_state.level_size
         x = int(max_idx) % env.game_state.level_size
         start_pos = (x, y)
         pursuer_pos = env.game_state.pursuer.pos
-        target_pos = pos_to_grid(pursuer_pos.x, pursuer_pos.y, env.game_state.level_size, CELL_SIZE)
+        target_pos = pos_to_grid(
+            pursuer_pos.x, pursuer_pos.y, env.game_state.level_size, CELL_SIZE
+        )
 
         queue = [start_pos]
         parents: Dict[tuple[int, int], tuple[int, int]] = {}
@@ -79,17 +86,24 @@ if __name__ == "__main__":
             finished = False
             for n_delta in neighbors_delta:
                 neighbor = (curr_pos[0] + n_delta[0], curr_pos[1] + n_delta[1])
-                check_clear = [neighbor]
+                def is_wall(pos: tuple[int, int]) -> bool:
+                    assert env.game_state
+                    if (
+                        pos[0] < 0
+                        or pos[0] >= env.game_state.level_size
+                        or pos[1] < 0
+                        or pos[1] >= env.game_state.level_size
+                    ):
+                        return True
+                    return env.game_state.walls[
+                        pos[1] * env.game_state.level_size + pos[0]
+                    ]
+                can_enter = not is_wall(neighbor)
                 if n_delta[0] != 0 and n_delta[1] != 0:
-                    check_clear.append((curr_pos[0] + n_delta[0], curr_pos[1]))
-                    check_clear.append((curr_pos[0], curr_pos[1] + n_delta[1]))
-                should_skip = False
-                for pos in check_clear:
-                    is_wall = env.game_state.walls[pos[1] * env.game_state.level_size + pos[0]]
-                    if is_wall:
-                        should_skip = True
-                        break
-                if not should_skip and neighbor not in parents.keys():
+                    n1 = (curr_pos[0] + n_delta[0], curr_pos[1])
+                    n2 = (curr_pos[0], curr_pos[1] + n_delta[1])
+                    can_enter = can_enter and (not is_wall(n1) or not is_wall(n2))
+                if can_enter and neighbor not in parents.keys():
                     queue.append(neighbor)
                     parents[neighbor] = curr_pos
                     if neighbor == target_pos:
@@ -100,24 +114,16 @@ if __name__ == "__main__":
 
         if target_pos not in parents.keys():
             return env.action_space(agent).sample()
-        dirs = [
-            (0, 1),
-            (1, 1),
-            (1, 0),
-            (1, -1),
-            (0, -1),
-            (-1, -1),
-            (-1, 0),
-            (-1, 1)
-        ]
+        
+        dirs = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
         actual_dir = np.array(parents[target_pos]) - np.array(target_pos)
-        actual_dir = actual_dir / (actual_dir**2).sum().sqrt()
+        actual_dir = actual_dir / math.sqrt(float((actual_dir**2).sum()))
         best_action = 0
         best_score = -1
         for i, dir_ in enumerate(dirs):
             action = i + 1
             norm_dir = np.array(dir_)
-            norm_dir = norm_dir / (norm_dir**2).sum().sqrt()
+            norm_dir = norm_dir / math.sqrt(float((norm_dir**2).sum()))
             score = norm_dir @ actual_dir.T
             if score > best_score:
                 best_score = score
@@ -160,6 +166,7 @@ if __name__ == "__main__":
         update_fn=manual_update,
         grid_size=args.grid_size,
         start_gt=args.start_gt,
+        max_timer=100,
     )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
@@ -179,6 +186,8 @@ if __name__ == "__main__":
             policies[agent] = model_policy(
                 chkpts[agent], int(action_space.n), args.use_pos, args.use_objs
             )
+        elif args.use_pathfinding and agent == "pursuer":
+            policies[agent] = pathfinding_policy
         else:
             policies[agent] = heuristic_policy
 
@@ -195,4 +204,3 @@ if __name__ == "__main__":
             obs_ = env.reset()[0]
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
     print("Found pct:", found_count / args.num_iters)
-    
