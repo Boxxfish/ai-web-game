@@ -29,6 +29,7 @@ _: Any
 
 torch.tensor([1], device="cuda")
 
+
 @dataclass
 class Config:
     out_dir: str = "./runs"  # Output directory.
@@ -56,7 +57,9 @@ class Config:
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     entropy_coeff: float = 0.001  # Entropy bonus applied.
     gradient_clip: float = 0.1  # Gradient clipping for networks.
-    gradient_steps: int = 1 # Number of gradient steps, effectively increases the batch size.
+    gradient_steps: int = (
+        1  # Number of gradient steps, effectively increases the batch size.
+    )
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
@@ -64,10 +67,11 @@ class Config:
     player_sees_visible_cells: bool = (
         False  # Whether the player should have ground truth information on the pursuer.
     )
-    checkpoint_player: str = "" # Player checkpoint to continue from.
-    checkpoint_pursuer: str = "" # Pursuer checkpoint to continue from.
+    checkpoint_player: str = ""  # Player checkpoint to continue from.
+    checkpoint_pursuer: str = ""  # Pursuer checkpoint to continue from.
     aux_rew_amount: float = 0.0
     grid_size: int = 8
+    start_gt: bool = False
     device: str = "cuda"  # Device to use during training.
 
 
@@ -207,7 +211,8 @@ if __name__ == "__main__":
                 max_timer=cfg.max_timer,
                 player_sees_visible_cells=cfg.player_sees_visible_cells,
                 aux_rew_amount=cfg.aux_rew_amount,
-                update_fn=update_fn
+                update_fn=update_fn,
+                start_gt=cfg.start_gt,
             )
             for _ in range(cfg.num_envs)
         ]
@@ -218,7 +223,8 @@ if __name__ == "__main__":
         grid_size=cfg.grid_size,
         max_timer=cfg.max_timer,
         player_sees_visible_cells=cfg.player_sees_visible_cells,
-        update_fn=update_fn
+        update_fn=update_fn,
+        start_gt=cfg.start_gt,
     )
 
     # Initialize policy and value networks
@@ -307,21 +313,26 @@ if __name__ == "__main__":
                         steps_taken = 0
                         obs_ = test_env.reset()[0]
                         eval_obs = {
-                            agent: convert_obs(obs_[agent], True) for agent in env.agents
+                            agent: convert_obs(obs_[agent], True)
+                            for agent in env.agents
                         }
                         for _ in range(cfg.max_eval_steps):
                             all_actions = {}
                             all_distrs = {}
                             for agent in env.agents:
                                 distr = Categorical(
-                                    logits=agents[agent].p_net(*eval_obs[agent]).squeeze()
+                                    logits=agents[agent]
+                                    .p_net(*eval_obs[agent])
+                                    .squeeze()
                                 )
                                 all_distrs[agent] = distr
                                 action = distr.sample().item()
                                 all_actions[agent] = action
                             if use_explore:
                                 assert test_env.game_state
-                                all_actions["player"] = explore_policy(test_env.game_state, False)
+                                all_actions["player"] = explore_policy(
+                                    test_env.game_state, False
+                                )
                             obs_, reward, eval_done, _, _ = test_env.step(all_actions)
                             eval_obs = {
                                 agent: convert_obs(obs_[agent], True)
@@ -340,9 +351,13 @@ if __name__ == "__main__":
                     for agent in env.agents:
                         log_dict.update(
                             {
-                                f"{prefix}{agent}_avg_eval_episode_return": reward_total[agent]
+                                f"{prefix}{agent}_avg_eval_episode_return": reward_total[
+                                    agent
+                                ]
                                 / cfg.eval_steps,
-                                f"{prefix}{agent}_avg_eval_entropy": entropy_total[agent]
+                                f"{prefix}{agent}_avg_eval_entropy": entropy_total[
+                                    agent
+                                ]
                                 / cfg.eval_steps,
                             }
                         )

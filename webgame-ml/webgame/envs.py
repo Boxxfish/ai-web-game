@@ -68,6 +68,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         player_sees_visible_cells: bool = False,
         aux_rew_amount: float = 0.0,
         grid_size: int = 8,
+        start_gt: bool = False,
     ):
         self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -82,6 +83,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.player_sees_visible_cells = player_sees_visible_cells
         self.aux_rew_amount = aux_rew_amount
         self.grid_size = grid_size
+        self.start_gt = start_gt
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
@@ -152,6 +154,13 @@ class GameEnv(pettingzoo.ParallelEnv):
                 )
                 for agent in self.agents
             }
+            if self.start_gt:
+                self.filters["pursuer"].belief = np.zeros(self.filters["pursuer"].belief.shape)
+                play_pos = self.game_state.player.pos
+                x, y = pos_to_grid(
+                    play_pos.x, play_pos.y, self.game_state.level_size, CELL_SIZE
+                )
+                self.filters["pursuer"].belief[y, x] = 1
         obs = self.game_state_to_obs(self.game_state)
         infos = {
             "player": None,

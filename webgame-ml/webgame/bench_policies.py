@@ -159,6 +159,7 @@ if __name__ == "__main__":
         player_sees_visible_cells=args.player_sees_visible_cells,
         update_fn=manual_update,
         grid_size=args.grid_size,
+        start_gt=args.start_gt,
     )
     obs_ = env.reset()[0]
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
