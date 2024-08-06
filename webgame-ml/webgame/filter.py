@@ -100,57 +100,55 @@ def manual_update(
         player_vis_grid = pos_to_grid(other_obs.pos.x, other_obs.pos.y, size, cell_size)
 
     obs_grid = np.array(game_state.walls).reshape(
-        [game_state.level_size, game_state.level_size]
+        [size, size]
     )
-    lkhd = np.zeros([size, size])
+    grid_lkhd = 1 - obs_grid
+    if player_vis_grid is not None:
+        agent_lkhd = np.zeros([size, size])
+        agent_lkhd[player_vis_grid[1], player_vis_grid[0]] = 1
+    else:
+        visible_cells = np.array(agent_state.visible_cells).reshape([size, size])
+        # Cells within vision have 0% chance of agent being there
+        agent_lkhd = 1.0 - visible_cells
+        # All other cells are equally probable
+        agent_lkhd = agent_lkhd / (size**2 - visible_cells.sum())
+    lkhd = grid_lkhd * agent_lkhd
     agent_pos = agent_state.pos
-    for y in range(size):
-        for x in range(size):
-            grid_lkhd = 1 - obs_grid[y][x]
-            agent_lkhd = 1.0
-            noise_lkhd = 1.0
-            vis_lkhd = 1.0
-            if player_vis_grid is not None:
-                pass
-                if player_vis_grid != (x, y):
-                    agent_lkhd = 0.0
-            else:
-                # Cells within vision have 0% chance of agent being there
-                agent_lkhd = (
-                    1.0 - agent_state.visible_cells[y * game_state.level_size + x]
-                )
-                # All other cells are equally probable
-                agent_lkhd = agent_lkhd / (size**2 - sum(agent_state.visible_cells))
+    # Commenting out for performance reasons, we don't use these on the Python side anyway
+    # for y in range(size):
+    #     for x in range(size):
+    #         noise_lkhd = 1.0
+    #         vis_lkhd = 1.0
+    #         if player_vis_grid is None:
+    #             # If any noise sources are triggered, make the likelihood a normal distribution centered on it
+    #             pos = np.array([x, y], dtype=float) * cell_size
+    #             for obj_id in agent_state.listening:
+    #                 noise_obj = game_state.noise_sources[obj_id]
+    #                 mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
+    #                 var = ((mean - np.array([agent_pos.x, agent_pos.y])))**2
+    #                 val = np.exp(-((pos - mean) ** 2 / (2 * var))) / math.sqrt(
+    #                     2 * math.pi * var
+    #                 )
+    #                 noise_lkhd *= val.prod()
 
-                # If any noise sources are triggered, make the likelihood a normal distribution centered on it
-                pos = np.array([x, y], dtype=float) * cell_size
-                for obj_id in agent_state.listening:
-                    noise_obj = game_state.noise_sources[obj_id]
-                    mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
-                    var = ((mean - np.array([agent_pos.x, agent_pos.y])))**2
-                    val = np.exp(-((pos - mean) ** 2 / (2 * var))) / math.sqrt(
-                        2 * math.pi * var
-                    )
-                    noise_lkhd *= val.prod()
+    #             # If any visual markers are moved, we can localize the player based on its start position, end position,
+    #             # and how long it's been since the pursuer last looked at it
+    #             max_speed = cell_size
+    #             for obj_id in agent_state.observing:
+    #                 if obj_id in agent_state.vm_data:
+    #                     vm_data = agent_state.vm_data[obj_id]
+    #                     obs_obj = game_state.objects[obj_id]
+    #                     if vm_data.last_seen_elapsed > 1 and not vm_data.pushed_by_self:
+    #                         last_pos = np.array([vm_data.last_pos.x, vm_data.last_pos.y])
+    #                         curr_pos = np.array([obs_obj.pos.x, obs_obj.pos.y])
+    #                         moved_amount = ((last_pos - curr_pos)**2).sum()
+    #                         if moved_amount > 0.1:
+    #                             curr_dist = ((pos - curr_pos)**2).sum()
+    #                             max_dist = (max_speed * vm_data.last_seen_elapsed)**2
+    #                             if curr_dist > max_dist:
+    #                                 vis_lkhd = 0.0
 
-                # If any visual markers are moved, we can localize the player based on its start position, end position,
-                # and how long it's been since the pursuer last looked at it
-                max_speed = cell_size
-                for obj_id in agent_state.observing:
-                    if obj_id in agent_state.vm_data:
-                        vm_data = agent_state.vm_data[obj_id]
-                        obs_obj = game_state.objects[obj_id]
-                        if vm_data.last_seen_elapsed > 1 and not vm_data.pushed_by_self:
-                            last_pos = np.array([vm_data.last_pos.x, vm_data.last_pos.y])
-                            curr_pos = np.array([obs_obj.pos.x, obs_obj.pos.y])
-                            moved_amount = ((last_pos - curr_pos)**2).sum()
-                            if moved_amount > 0.1:
-                                curr_dist = ((pos - curr_pos)**2).sum()
-                                max_dist = (max_speed * vm_data.last_seen_elapsed)**2
-                                if curr_dist > max_dist:
-                                    vis_lkhd = 0.0
-
-            lkhd[y][x] = grid_lkhd * agent_lkhd * noise_lkhd * vis_lkhd
+    #         lkhd[y][x] *= noise_lkhd * vis_lkhd
     return lkhd
 
 
