@@ -152,6 +152,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         while not self.check_path():
             self.game_state = self.game.reset()
         assert self.game_state
+        self.state = self.game.step(0, 0)
 
         self.timer = 0
         if self.update_fn:

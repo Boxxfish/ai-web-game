@@ -71,6 +71,9 @@ class BayesFilter:
         )
         lkhd = lkhd * (1 - self.lkhd_min) + self.lkhd_min
         self.belief = lkhd * self.belief
+        if self.belief.sum() < 0.0001:
+            print("Warning: Belief summed to zero. Resetting filter.")
+            self.belief = np.ones(self.belief.shape)
         self.belief = self.belief / self.belief.sum()
         return self.belief
 
