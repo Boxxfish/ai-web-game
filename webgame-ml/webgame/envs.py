@@ -327,21 +327,14 @@ class GameEnv(pettingzoo.ParallelEnv):
             curr_pos = queue.pop(0)
             neighbors_delta = [
                 (1, 0),
-                (1, -1),
-                (1, 1),
                 (-1, 0),
-                (-1, -1),
-                (-1, 1),
                 (0, 1),
-                (-1, 1),
-                (1, 1),
                 (0, -1),
-                (-1, -1),
-                (1, -1),
             ]
             finished = False
             for n_delta in neighbors_delta:
                 neighbor = (curr_pos[0] + n_delta[0], curr_pos[1] + n_delta[1])
+
                 def is_wall(pos: tuple[int, int]) -> bool:
                     assert self.game_state
                     if (
@@ -354,6 +347,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                     return self.game_state.walls[
                         pos[1] * self.game_state.level_size + pos[0]
                     ]
+
                 if not is_wall(neighbor) and neighbor not in parents.keys():
                     queue.append(neighbor)
                     parents[neighbor] = curr_pos
@@ -364,6 +358,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                 break
 
         return target_pos in parents.keys()
+
 
 if __name__ == "__main__":
     env = GameEnv(visualize=False)
