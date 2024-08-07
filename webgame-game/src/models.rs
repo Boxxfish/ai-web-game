@@ -123,26 +123,26 @@ impl Backbone {
             .add(nn::Activation::Silu)
             .add(nn::conv2d(
                 mid_channels,
-                mid_channels,
-                5,
+                mid_channels * 2,
+                3,
                 nn::Conv2dConfig {
-                    padding: 5 / 2,
+                    padding: 3 / 2,
                     ..Default::default()
                 },
                 grid_vb.pp("3"),
             )?)
             .add(if use_bn {
-                nn::seq().add(BatchNorm2d::new(mid_channels, grid_vb.pp("4"))?)
+                nn::seq().add(BatchNorm2d::new(mid_channels * 2, grid_vb.pp("4"))?)
             } else {
                 nn::seq()
             })
             .add(nn::Activation::Silu)
             .add(nn::conv2d(
-                mid_channels,
+                mid_channels * 2,
                 out_channels,
-                5,
+                3,
                 nn::Conv2dConfig {
-                    padding: 5 / 2,
+                    padding: 3 / 2,
                     ..Default::default()
                 },
                 grid_vb.pp("6"),
@@ -348,11 +348,11 @@ unsafe impl Sync for PolicyNet {}
 
 impl LoadableNN for PolicyNet {
     fn load(vb: VarBuilder) -> candle_core::Result<Self> {
-        let channels = 10;
+        let channels = 7;
         let size = 16;
         let use_pos = true;
         let objs_shape = None;
-        let proj_dim = 32;
+        let proj_dim = 64;
         let action_count = 9;
 
         let backbone = Backbone::new(
@@ -370,7 +370,7 @@ impl LoadableNN for PolicyNet {
         let net = nn::seq()
             .add(nn::conv2d(
                 proj_dim,
-                32,
+                64,
                 3,
                 nn::Conv2dConfig {
                     padding: 3 / 2,
@@ -379,23 +379,10 @@ impl LoadableNN for PolicyNet {
                 net1_vb.pp("0"),
             )?)
             .add(nn::Activation::Silu)
-            .add(nn::conv2d(
-                32,
-                128,
-                3,
-                nn::Conv2dConfig {
-                    padding: 3 / 2,
-                    ..Default::default()
-                },
-                net1_vb.pp("2"),
-            )?)
-            .add(nn::Activation::Silu)
             .add_fn(|t| t.max(D::Minus1)?.max(D::Minus1))
-            .add(nn::linear(128, 256, net2_vb.pp("0"))?)
+            .add(nn::linear(64, 256, net2_vb.pp("0"))?)
             .add(nn::Activation::Silu)
-            .add(nn::linear(256, 256, net2_vb.pp("2"))?)
-            .add(nn::Activation::Silu)
-            .add(nn::linear(256, action_count, net2_vb.pp("4"))?);
+            .add(nn::linear(256, action_count, net2_vb.pp("2"))?);
         Ok(PolicyNet { net, backbone })
     }
 }
