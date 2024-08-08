@@ -348,7 +348,7 @@ fn setup_entities(
             });
 
             // Set up walls and doors
-            let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, GRID_CELL_SIZE));
+            let wall_mesh = meshes.add(Cuboid::new(GRID_CELL_SIZE, GRID_CELL_SIZE, 0.1));
             let wall_mat = materials.add(StandardMaterial {
                 base_color: Color::BLACK,
                 unlit: true,
@@ -459,7 +459,7 @@ fn setup_entities(
                             mesh: meshes.add(Cuboid::new(
                                 half_sizes[i / 2] * 2.,
                                 half_sizes[1 - i / 2] * 2.,
-                                GRID_CELL_SIZE,
+                                0.1,
                             )),
                             material: wall_mat.clone(),
                             ..default()
