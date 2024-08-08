@@ -8,7 +8,7 @@ use webgame_game::{
     configs::{LibCfgPlugin, VisualizerPlugin},
     gridworld::{LevelLayout, ResetEvent, GRID_CELL_SIZE},
     observations::fill_tri_half,
-    observer::{Observable, Observer},
+    observer::{Observable, Observer, RegenerateCones},
     screens::ScreenState,
     world_objs::NoiseSource,
 };
@@ -157,6 +157,7 @@ impl GameWrapper {
         app.insert_resource(UseGridPositions);
 
         if visualize {
+            app.insert_resource(RegenerateCones);
             app.add_plugins(VisualizerPlugin {
                 recording_id: recording_id.clone(),
             });

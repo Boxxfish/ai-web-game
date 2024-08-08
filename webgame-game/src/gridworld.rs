@@ -319,7 +319,6 @@ fn setup_entities(
                 )),
                 Observer::default(),
                 Observable,
-                DebugObserver,
             ))
             .with_children(|p| {
                 if is_playable.is_some() {
