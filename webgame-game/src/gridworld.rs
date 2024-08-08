@@ -522,7 +522,7 @@ fn setup_entities(
                             mesh: meshes.add(Cuboid::new(
                                 collider_size,
                                 collider_size,
-                                collider_size,
+                                0.1,
                             )),
                             material: obj_mat.clone(),
                             ..default()
