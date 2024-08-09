@@ -19,17 +19,16 @@ pub struct ObserverPlugin;
 
 impl Plugin for ObserverPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            PostUpdate,
-            (
-                update_observers.after(bevy_rapier2d::plugin::PhysicsSet::Writeback),
-                update_vm_data,
-                add_vis_cones,
-                draw_observer_areas
-                    .after(update_observers)
-                    .after(add_vis_cones),
-            ),
-        );
+        app.add_systems(Update, (update_vm_data, add_vis_cones))
+            .add_systems(
+                PostUpdate,
+                (
+                    update_observers.after(bevy_rapier2d::plugin::PhysicsSet::Writeback),
+                    draw_observer_areas
+                        .after(update_observers)
+                        .after(add_vis_cones),
+                ),
+            );
     }
 }
 
