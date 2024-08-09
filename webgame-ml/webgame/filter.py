@@ -429,23 +429,23 @@ if __name__ == "__main__":
             action = policies[agent](agent, env, obs[agent])
             actions[agent] = action
         obs_, rew, done, trunc, info = env.step(actions)
-        # if done["pursuer"]:
-        #     obs_ = env.reset()[0]
-        #     b_filter = BayesFilter(
-        #         env.game_state.level_size,
-        #         CELL_SIZE,
-        #         update_fn,
-        #         args.use_objs,
-        #         True,
-        #         args.lkhd_min,
-        #     )
-        #     if args.start_gt:
-        #         b_filter.belief = np.zeros(b_filter.belief.shape)
-        #         play_pos = env.game_state.player.pos
-        #         x, y = pos_to_grid(
-        #             play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
-        #         )
-        #         b_filter.belief[y, x] = 1
+        if done["pursuer"]:
+            obs_ = env.reset()[0]
+            b_filter = BayesFilter(
+                env.game_state.level_size,
+                CELL_SIZE,
+                update_fn,
+                args.use_objs,
+                True,
+                args.lkhd_min,
+            )
+            if args.start_gt:
+                b_filter.belief = np.zeros(b_filter.belief.shape)
+                play_pos = env.game_state.player.pos
+                x, y = pos_to_grid(
+                    play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
+                )
+                b_filter.belief[y, x] = 1
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
 
         game_state = env.game_state
