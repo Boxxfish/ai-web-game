@@ -114,26 +114,26 @@ fn update_observers(
         sorted_endpoints.extend_from_slice(&[start + cone_l, start + cone_r]);
 
         // Sort endpoints by angle and remove any points not within the vision cone
-        sorted_endpoints.retain_mut(|p| {
-            let dir = (*p - start).normalize();
-            dir.dot(agent.dir).acos() <= fov / 2. + 0.01
-        });
-        sorted_endpoints.sort_unstable_by_key(|p| {
-            let dir = (*p - start).normalize();
+        let mut sorted_dirs: Vec<_> = sorted_endpoints
+            .into_iter()
+            .map(|p| (p - start).normalize())
+            .filter(|dir| dir.dot(agent.dir).acos() <= fov / 2. + 0.01)
+            .collect();
+        sorted_dirs.sort_unstable_by_key(|dir| {
             OrderedFloat(dir.x * -dir.y.signum() - dir.y.signum())
         });
 
-        let first_idx = sorted_endpoints
+        let first_dir = cone_l.normalize();
+        let first_idx = sorted_dirs
             .iter()
-            .position(|p| p.abs_diff_eq(start + cone_l, 0.1))
-            .unwrap_or(0);
+            .position(|p| p.abs_diff_eq(first_dir, 0.01))
+            .unwrap();
 
         // Sweep from `cone_l` to `cone_r`
         let mut all_tris = Vec::new();
-        for i in 0..sorted_endpoints.len() {
-            let i = (i + first_idx) % sorted_endpoints.len();
-            let p = sorted_endpoints[i];
-            let dir = (p - start).normalize();
+        for i in 0..sorted_dirs.len() {
+            let i = (i + first_idx) % sorted_dirs.len();
+            let dir = sorted_dirs[i];
             let mut tri = Vec::new();
             for mat in [Mat2::from_angle(-0.001), Mat2::from_angle(0.001)] {
                 let dir = mat * dir;
