@@ -23,6 +23,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--pursuer-chkpt", type=str, default=None)
+    parser.add_argument("--player-chkpt", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
     parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--wall-prob", type=float, default=0.1)
@@ -180,7 +181,7 @@ if __name__ == "__main__":
 
     # Set up policies
     policies = {}
-    chkpts = {"pursuer": args.pursuer_chkpt, "player": None}
+    chkpts = {"pursuer": args.pursuer_chkpt, "player": args.player_chkpt}
     for agent in env.agents:
         if chkpts[agent]:
             policies[agent] = model_policy(
