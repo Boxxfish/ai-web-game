@@ -37,8 +37,8 @@ pub fn encode_obs(
     // Set up observations
     let device = Device::Cpu;
     let mut obs_vec = vec![0.; 4];
-    obs_vec[0] = 0.5 + agent_state.pos.x / (level.size as f32 * GRID_CELL_SIZE);
-    obs_vec[1] = 0.5 + agent_state.pos.y / (level.size as f32 * GRID_CELL_SIZE);
+    obs_vec[0] = (0.5 * GRID_CELL_SIZE + agent_state.pos.x) / (level.size as f32 * GRID_CELL_SIZE);
+    obs_vec[1] = (0.5 * GRID_CELL_SIZE + agent_state.pos.y) / (level.size as f32 * GRID_CELL_SIZE);
     obs_vec[2] = agent_state.dir.x;
     obs_vec[3] = agent_state.dir.y;
 
@@ -58,8 +58,8 @@ pub fn encode_obs(
         if agent_state.vm_data.contains_key(e) {
             let obs_obj = agent_state.objects.get(e).unwrap();
             let mut obj_features = vec![0.; OBJ_DIM];
-            obj_features[0] = 0.5 + obs_obj.pos.x / (level.size as f32 * GRID_CELL_SIZE);
-            obj_features[1] = 0.5 + obs_obj.pos.y / (level.size as f32 * GRID_CELL_SIZE);
+            obj_features[0] = (0.5 * GRID_CELL_SIZE + obs_obj.pos.x) / (level.size as f32 * GRID_CELL_SIZE);
+            obj_features[1] = (0.5 * GRID_CELL_SIZE + obs_obj.pos.y) / (level.size as f32 * GRID_CELL_SIZE);
             obj_features[2] = 1.;
             let vm_data = agent_state.vm_data[e];
             obj_features[5] = vm_data.last_seen_elapsed / 10.0;
@@ -71,8 +71,8 @@ pub fn encode_obs(
     for (i, e) in agent_state.listening.iter().enumerate() {
         let obj_noise = agent_state.noise_sources.get(e).unwrap();
         let mut obj_features = vec![0.; OBJ_DIM];
-        obj_features[0] = 0.5 + obj_noise.pos.x / (level.size as f32 * GRID_CELL_SIZE);
-        obj_features[1] = 0.5 + obj_noise.pos.y / (level.size as f32 * GRID_CELL_SIZE);
+        obj_features[0] = (0.5 * GRID_CELL_SIZE + obj_noise.pos.x) / (level.size as f32 * GRID_CELL_SIZE);
+        obj_features[1] = (0.5 * GRID_CELL_SIZE + obj_noise.pos.y) / (level.size as f32 * GRID_CELL_SIZE);
         obj_features[3] = 1.;
         obj_features[4] = obj_noise.active_radius;
         obs_vecs[i + agent_state.observing.len()] = obj_features;
