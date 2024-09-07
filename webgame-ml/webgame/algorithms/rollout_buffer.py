@@ -59,7 +59,7 @@ class RolloutBuffer:
             [num_steps, num_envs], dtype=k, device=d, requires_grad=False
         )
         self.masks = torch.zeros(
-            action_probs_shape, dtype=torch.int, device=d, requires_grad=False
+            action_probs_shape, dtype=torch.bool, device=d, requires_grad=False
         )
 
     def insert_step(
@@ -70,7 +70,7 @@ class RolloutBuffer:
         rewards: List[float],
         dones: List[bool],
         truncs: List[bool],
-        masks: Optional[List[int]] = None,
+        masks: Optional[torch.Tensor] = None,
     ):
         """
         Inserts a transition from each environment into the buffer. Make sure
@@ -93,9 +93,9 @@ class RolloutBuffer:
             self.truncs[self.next].copy_(
                 torch.tensor(truncs, dtype=torch.float, device=d)
             )
-            if masks:
+            if masks is not None:
                 self.masks[self.next].copy_(
-                    torch.tensor(masks, dtype=torch.int, device=d)
+                    masks
                 )
 
         self.next += 1

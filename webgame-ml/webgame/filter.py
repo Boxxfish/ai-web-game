@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
-from webgame.common import convert_obs, explore_policy, pos_to_grid, process_obs
+from webgame.common import convert_infos, convert_obs, explore_policy, pos_to_grid, process_obs
 
 import gymnasium as gym
 from torch import Tensor, nn
@@ -236,6 +236,7 @@ if __name__ == "__main__":
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     parser.add_argument("--start-gt", default=False, action="store_true")
     parser.add_argument("--use-pathfinding", default=False, action="store_true")
+    parser.add_argument("--stop-player-after", type=int, default=None)
     parser.add_argument(
         "--player-sees-visible-cells", default=False, action="store_true"
     )
@@ -243,7 +244,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     def heuristic_policy(
-        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _: Dict,
     ) -> int:
         if random.random() < 0.1:
             action = env.action_space(agent).sample()
@@ -253,7 +254,7 @@ if __name__ == "__main__":
         return action
 
     def pathfinding_policy(
-        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _: Dict,
     ) -> int:
         if args.player_sees_visible_cells:
             idx = -2
@@ -342,7 +343,7 @@ if __name__ == "__main__":
         action_count: int,
         use_pos: bool,
         use_objs: bool,
-    ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
+    ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Dict], int]:
         channels = 6
         if args.player_sees_visible_cells:
             channels = 7
@@ -359,8 +360,10 @@ if __name__ == "__main__":
             agent: str,
             env: GameEnv,
             obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+            info: Dict,
         ) -> int:
             action_probs = p_net(*obs).squeeze(0)
+            action_probs = action_probs.masked_fill(info["action_mask"], -torch.inf)
             action = Categorical(logits=action_probs).sample().item()
             return action
 
@@ -379,9 +382,12 @@ if __name__ == "__main__":
         update_fn=manual_update,
         grid_size=args.grid_size,
         start_gt=args.start_gt,
+        stop_player_after=args.stop_player_after,
+        max_timer=100,
     )
-    obs_ = env.reset()[0]
+    obs_, info_ = env.reset()
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
+    info = {agent: convert_infos(info_[agent]) for agent in env.agents}
 
     action_space = env.action_space("pursuer")  # Same for both agents
     assert isinstance(action_space, gym.spaces.Discrete)
@@ -423,14 +429,14 @@ if __name__ == "__main__":
         else:
             policies[agent] = heuristic_policy
 
-    for _ in range(100):
+    for _ in range(500):
         actions = {}
         for agent in env.agents:
-            action = policies[agent](agent, env, obs[agent])
+            action = policies[agent](agent, env, obs[agent], info[agent])
             actions[agent] = action
-        obs_, rew, done, trunc, info = env.step(actions)
-        if done["pursuer"]:
-            obs_ = env.reset()[0]
+        obs_, rew, done, trunc, info_ = env.step(actions)
+        if trunc["pursuer"]:
+            obs_, info_ = env.reset()
             b_filter = BayesFilter(
                 env.game_state.level_size,
                 CELL_SIZE,
@@ -447,6 +453,7 @@ if __name__ == "__main__":
                 )
                 b_filter.belief[y, x] = 1
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
+        info = {agent: convert_infos(info_[agent]) for agent in env.agents}
 
         game_state = env.game_state
         assert game_state is not None

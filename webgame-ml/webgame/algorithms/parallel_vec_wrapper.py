@@ -29,13 +29,13 @@ class ParallelVecWrapper(pz.ParallelEnv):
         dict[Any, List[float]],
         dict[Any, List[bool]],
         dict[Any, List[bool]],
-        dict[Any, List[dict]],
+        dict[str, dict[str, list]],
     ]:
-        agent_obs_all: Dict[str, List[Any]] = {agent: [] for agent in self.agents}
+        agent_obs_all_: Dict[str, List[Any]] = {agent: [] for agent in self.agents}
         agent_rew_all: Dict[str, List[float]] = {agent: [] for agent in self.agents}
         agent_done_all: Dict[str, List[bool]] = {agent: [] for agent in self.agents}
         agent_trunc_all: Dict[str, List[bool]] = {agent: [] for agent in self.agents}
-        agent_info_all: Dict[str, List[dict]] = {agent: [] for agent in self.agents}
+        agent_info_all_: Dict[str, List[dict]] = {agent: [] for agent in self.agents}
         for i, env in enumerate(self.envs):
             all_actions = {}
             for agent, action in actions.items():
@@ -44,16 +44,22 @@ class ParallelVecWrapper(pz.ParallelEnv):
             if done[self.agents[0]] or trunc[self.agents[0]]:
                 obs, info = env.reset()
             for agent in self.agents:
-                agent_obs_all[agent].append(obs[agent])
+                agent_obs_all_[agent].append(obs[agent])
                 agent_rew_all[agent].append(rew[agent])
                 agent_done_all[agent].append(done[agent])
                 agent_trunc_all[agent].append(trunc[agent])
-                agent_info_all[agent].append(info[agent])
+                agent_info_all_[agent].append(info[agent])
         agent_obs_all = {
             agent: ParallelVecWrapper._stack_obs(
                 obs, self.observation_space(self.agents[0])
             )
-            for agent, obs in agent_obs_all.items()
+            for agent, obs in agent_obs_all_.items()
+        }
+        agent_info_all = {
+            agent: ParallelVecWrapper._stack_info(
+                info
+            )
+            for agent, info in agent_info_all_.items()
         }
         return (
             agent_obs_all,
@@ -63,19 +69,25 @@ class ParallelVecWrapper(pz.ParallelEnv):
             agent_info_all,
         )
 
-    def reset(self, *args) -> tuple[dict, dict[Any, List[dict]]]:
-        agent_obs_all: Dict[str, List[Any]] = {agent: [] for agent in self.agents}
-        agent_info_all: Dict[str, List[dict]] = {agent: [] for agent in self.agents}
+    def reset(self, *args) -> tuple[dict[str, Any], dict[str, dict[str, list]]]:
+        agent_obs_all_: Dict[str, List] = {agent: [] for agent in self.agents}
+        agent_info_all_: Dict[str, List] = {agent: [] for agent in self.agents}
         for env in self.envs:
             obs, info = env.reset(*args)
             for agent in env.agents:
-                agent_obs_all[agent].append(obs[agent])
-                agent_info_all[agent].append(info[agent])
+                agent_obs_all_[agent].append(obs[agent])
+                agent_info_all_[agent].append(info[agent])
         agent_obs_all = {
             agent: ParallelVecWrapper._stack_obs(
                 obs, self.observation_space(self.agents[0])
             )
-            for agent, obs in agent_obs_all.items()
+            for agent, obs in agent_obs_all_.items()
+        }
+        agent_info_all = {
+            agent: ParallelVecWrapper._stack_info(
+                info
+            )
+            for agent, info in agent_info_all_.items()
         }
         return agent_obs_all, agent_info_all
 
@@ -100,3 +112,14 @@ class ParallelVecWrapper(pz.ParallelEnv):
                 )
             return processed_obs
         return obs
+
+
+    @staticmethod
+    def _stack_info(info: list[dict]) -> Dict[str, list]:
+        new_info: Dict[str, list] = {}
+        for k in info[0]:
+            new_info[k] = []
+        for env_info in info:
+            for k, v in env_info.items():
+                new_info[k].append(v)
+        return new_info

@@ -69,6 +69,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         aux_rew_amount: float = 0.0,
         grid_size: int = 8,
         start_gt: bool = False,
+        stop_player_after: Optional[int] = None
     ):
         self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -84,13 +85,14 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.aux_rew_amount = aux_rew_amount
         self.grid_size = grid_size
         self.start_gt = start_gt
+        self.stop_player_after = stop_player_after
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
         Mapping[str, float],
         Mapping[str, bool],
         Mapping[str, bool],
-        Mapping[str, None],
+        Dict,
     ]:
         all_actions = []
         for agent in ["player", "pursuer"]:
@@ -139,14 +141,14 @@ class GameEnv(pettingzoo.ParallelEnv):
             "pursuer": trunc,
         }
         infos = {
-            "player": None,
-            "pursuer": None,
+            "player": {"action_mask": self.player_action_mask()},
+            "pursuer": {"action_mask": np.zeros([9], dtype=int)},
         }
         return (obs, rewards, dones, truncs, infos)
 
     def reset(self, *args) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
-        Mapping[str, None],
+        dict,
     ]:
         self.game_state = self.game.reset()
         while not self.check_path():
@@ -167,7 +169,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                 for agent in self.agents
             }
             if self.start_gt:
-                self.filters["pursuer"].belief = np.zeros(
+                self.filters["pursuer"].belief = np.ones(
                     self.filters["pursuer"].belief.shape
                 )
                 play_pos = self.game_state.player.pos
@@ -177,8 +179,8 @@ class GameEnv(pettingzoo.ParallelEnv):
                 self.filters["pursuer"].belief[y, x] = 1
         obs = self.game_state_to_obs(self.game_state)
         infos = {
-            "player": None,
-            "pursuer": None,
+            "player": {"action_mask": self.player_action_mask()},
+            "pursuer": {"action_mask": np.zeros([9], dtype=int)},
         }
         return (obs, infos)
 
@@ -310,6 +312,15 @@ class GameEnv(pettingzoo.ParallelEnv):
                 grid = np.stack([walls, extra_channel])
 
         return (obs_vec, grid, obs_vecs, attn_mask)
+
+    def player_is_paused(self) -> bool:
+        return self.stop_player_after is not None and self.timer >= self.stop_player_after
+    
+    def player_action_mask(self) -> np.ndarray:
+        mask = np.zeros([9], dtype=int)
+        if self.player_is_paused():
+            mask[1:] = 1
+        return mask
 
     def check_path(self) -> bool:
         assert self.game_state
