@@ -72,7 +72,7 @@ class Config:
     aux_rew_amount: float = 0.0
     grid_size: int = 8
     start_gt: bool = False
-    stop_player_after: int = 999999
+    stop_player_after: Optional[int] = None
     device: str = "cuda"  # Device to use during training.
 
 
@@ -261,8 +261,8 @@ if __name__ == "__main__":
                 all_actions = {}
                 for agent in env.agents:
                     action_probs = agents[agent].p_net(*obs[agent])
-                    action_probs = action_probs.masked_fill(infos[agent]["action_mask"], -torch.inf)
-                    actions = Categorical(logits=action_probs).sample().numpy()
+                    masked_logits = action_probs.masked_fill(infos[agent]["action_mask"], -torch.inf)
+                    actions = Categorical(logits=masked_logits).sample().numpy()
                     all_action_probs[agent] = action_probs
                     all_actions[agent] = actions
                 obs_, rewards, dones, truncs, infos_ = env.step(all_actions)
@@ -333,9 +333,9 @@ if __name__ == "__main__":
                             all_distrs = {}
                             for agent in env.agents:
                                 logits = agents[agent].p_net(*eval_obs[agent]).squeeze()
-                                logits = logits.masked_fill(eval_infos[agent]["action_mask"], -torch.inf)
+                                masked_logits = logits.masked_fill(eval_infos[agent]["action_mask"], -torch.inf)
                                 distr = Categorical(
-                                    logits=logits
+                                    logits=masked_logits
                                 )
                                 all_distrs[agent] = distr
                                 action = distr.sample().item()

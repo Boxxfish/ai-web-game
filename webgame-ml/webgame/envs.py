@@ -294,7 +294,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                         (
                             obs_vec,
                             np.stack([walls, extra_channel]),
-                            obs_vec,
+                            obs_vecs,
                             attn_mask,
                         )
                     ),
