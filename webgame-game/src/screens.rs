@@ -1,6 +1,7 @@
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 
 use crate::{
+    agents::{NeuralPolicy, PathfindingPolicy, PursuerAgent},
     gridworld::{GameEndEvent, LevelLayout, LevelLoader, ShouldRun, GRID_CELL_SIZE},
     models::{MeasureModel, PolicyNet},
     net::NNWrapper,
@@ -41,7 +42,12 @@ impl Plugin for ScreensPlayPlugin {
             .add_systems(OnExit(ScreenState::Game), destroy_game)
             .add_systems(
                 Update,
-                (handle_game_transition, handle_game_btns, handle_game_end)
+                (
+                    handle_game_transition,
+                    handle_game_btns,
+                    handle_game_end,
+                    update_curr_policy_label,
+                )
                     .run_if(in_state(ScreenState::Game)),
             )
             .add_systems(OnEnter(ScreenState::About), init_about)
@@ -95,10 +101,7 @@ const ASSETS_TO_LOAD: &[(&str, AssetType)] = &[
     ("furniture/floorFull.glb#Scene0", AssetType::Scene),
     ("furniture/pottedPlant.glb#Scene0", AssetType::Scene),
     ("key.glb#Scene0", AssetType::Scene),
-    (
-        "arrow.png",
-        AssetType::Image,
-    ),
+    ("arrow.png", AssetType::Image),
     (
         "input_prompts/keyboard_mouse/keyboard_wasd_outline.png",
         AssetType::Image,
@@ -376,13 +379,13 @@ enum GameAction {
     Restart,
 }
 
-fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>) {
-    create_game_ui(&mut commands);
+fn init_game(mut commands: Commands, mut ev_start_fade: EventWriter<StartFadeEvent>, asset_server: Res<AssetServer>) {
+    create_game_ui(&mut commands, &asset_server);
 
     ev_start_fade.send(StartFadeEvent { fade_in: true });
 }
 
-fn create_game_ui(commands: &mut Commands) {
+fn create_game_ui(commands: &mut Commands, asset_server: &Res<AssetServer>) {
     commands
         .spawn((
             GameScreen,
@@ -421,6 +424,7 @@ fn create_game_ui(commands: &mut Commands) {
                     for (label, input) in [
                         ("Move", InputType::WASD),
                         ("Toggle Filter", InputType::Space),
+                        ("Toggle Policy", InputType::P),
                     ] {
                         p.spawn(InputPromptBundle {
                             input_prompt: InputPrompt {
@@ -430,6 +434,17 @@ fn create_game_ui(commands: &mut Commands) {
                             ..default()
                         });
                     }
+                    p.spawn((
+                        CurrentPolicyLabel,
+                        TextBundle::from_section(
+                            "",
+                            TextStyle {
+                                font: asset_server.load(FONT_REGULAR),
+                                font_size: 16.,
+                                color: Color::WHITE,
+                            },
+                        ),
+                    ));
                 });
                 p.spawn(NodeBundle {
                     style: Style {
@@ -449,6 +464,24 @@ fn create_game_ui(commands: &mut Commands) {
                 });
             });
         });
+}
+
+#[derive(Component)]
+struct CurrentPolicyLabel;
+
+fn update_curr_policy_label(
+    mut label_query: Query<&mut Text, With<CurrentPolicyLabel>>,
+    pursuer_query: Query<Option<&PathfindingPolicy>, With<PursuerAgent>>,
+) {
+    if let Ok(mut text) = label_query.get_single_mut() {
+        if let Ok((use_pathfinding)) = pursuer_query.get_single() {
+            if use_pathfinding.is_some() {
+                text.sections[0].value = "Current Policy: Pathfinding".into();
+            } else {
+                text.sections[0].value = "Current Policy: Neural".into();
+            }
+        }
+    }
 }
 
 fn destroy_game(mut commands: Commands, screen_query: Query<Entity, With<GameScreen>>) {
@@ -494,6 +527,7 @@ fn handle_game_transition(
     level: Option<Res<LevelLayout>>,
     screen_query: Query<Entity, With<GameScreen>>,
     mut ev_start_fade: EventWriter<StartFadeEvent>,
+    asset_server: Res<AssetServer>,
 ) {
     for ev in ev_fade_finished.read() {
         if !ev.fade_in && ev.from_state == ScreenState::Game {
@@ -507,7 +541,7 @@ fn handle_game_transition(
                     let level_: LevelLayout = level.as_ref().unwrap().as_ref().clone();
                     commands.remove_resource::<LevelLayout>();
                     commands.insert_resource(level_);
-                    create_game_ui(&mut commands);
+                    create_game_ui(&mut commands, &asset_server);
                     ev_start_fade.send(StartFadeEvent { fade_in: true });
                     Some(ScreenState::Game)
                 }

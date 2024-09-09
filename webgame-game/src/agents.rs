@@ -7,6 +7,7 @@ use std::{
 use bevy::{prelude::*, sprite::Mesh2dHandle};
 use bevy_rapier2d::control::KinematicCharacterController;
 use candle_core::Tensor;
+use ordered_float::OrderedFloat;
 use rand::distributions::Distribution;
 
 use crate::{
@@ -50,6 +51,7 @@ impl Plugin for AgentPlayPlugin {
                     set_pursuer_action_pathfinding,
                     visualize_act_probs,
                     update_observations.after(update_vm_data),
+                    toggle_pursuer_policy,
                 )
                     .run_if(resource_exists::<ShouldRun>),
                 load_weights_into_net::<PolicyNet>,
@@ -163,6 +165,33 @@ fn visualize_agent<T: Component>(
                 InheritedVisibility::default(),
                 ViewVisibility::default(),
             ));
+        }
+    }
+}
+
+/// Toggle the pursuer's policy type.
+fn toggle_pursuer_policy(
+    inpt: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    pursuer_query: Query<
+        (Entity, Option<&PathfindingPolicy>, Option<&NeuralPolicy>),
+        With<PursuerAgent>,
+    >,
+) {
+    for (e, use_pathfinding, use_neural) in pursuer_query.iter() {
+        if inpt.just_pressed(KeyCode::KeyP) {
+            if use_pathfinding.is_some() {
+                commands
+                    .entity(e)
+                    .remove::<PathfindingPolicy>()
+                    .insert(NeuralPolicy);
+            }
+            if use_neural.is_some() {
+                commands
+                    .entity(e)
+                    .remove::<NeuralPolicy>()
+                    .insert(PathfindingPolicy);
+            }
         }
     }
 }
@@ -428,10 +457,13 @@ fn set_pursuer_action_pathfinding(
                         }
                     }
                 }
-                let next_tile = parents
-                    .get(&(goal_pos.0 as i32, goal_pos.1 as i32))
-                    .unwrap();
-                let mut dir = Vec2::new(next_tile.0 as f32, next_tile.1 as f32) * GRID_CELL_SIZE + 0.5
+                let next_tile = parents.get(&(goal_pos.0 as i32, goal_pos.1 as i32));
+                if next_tile.is_none() {
+                    return;
+                }
+                let next_tile = next_tile.unwrap();
+                let mut dir = Vec2::new(next_tile.0 as f32, next_tile.1 as f32) * GRID_CELL_SIZE
+                    + 0.5
                     - pursuer_xform.translation().xy();
                 dir = dir.normalize();
 
@@ -450,6 +482,26 @@ fn set_pursuer_action_pathfinding(
 
                 next_action.dir = dir;
                 next_action.toggle_objs = false;
+
+                let actions = [
+                    Vec2::Y,
+                    (Vec2::Y + Vec2::X).normalize(),
+                    Vec2::X,
+                    (-Vec2::Y + Vec2::X).normalize(),
+                    -Vec2::Y,
+                    (-Vec2::Y + -Vec2::X).normalize(),
+                    -Vec2::X,
+                    (Vec2::Y + -Vec2::X).normalize(),
+                ];
+                let action = actions
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, x)| OrderedFloat(x.dot(dir)))
+                    .unwrap()
+                    .0
+                    + 1;
+                pursuer.action_probs = vec![0.; 9];
+                pursuer.action_probs[action] = 1.;
             }
         }
     }
