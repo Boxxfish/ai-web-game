@@ -178,8 +178,8 @@ fn update_observers(
                 let d2 = sign(p, tri[1], tri[2]);
                 let d3 = sign(p, tri[2], tri[0]);
 
-                let has_neg = d1 < 0.1 || d2 < 0.1 || d3 < 0.1;
-                let has_pos = d1 > 0.1 || d2 > 0.1 || d3 > 0.1;
+                let has_neg = d1 < 0. || d2 < 0. || d3 < 0.;
+                let has_pos = d1 > 0. || d2 > 0. || d3 > 0.;
 
                 if !(has_neg && has_pos) {
                     observing.push(observable_e);

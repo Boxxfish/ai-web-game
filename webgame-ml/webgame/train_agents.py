@@ -304,7 +304,7 @@ if __name__ == "__main__":
                 entropy_coeff=cfg.entropy_coeff,
                 gradient_clip=cfg.gradient_clip,
                 gradient_steps=cfg.gradient_steps,
-                use_masks=True,
+                use_masks=False,
             )
             agents[agent].buffer.clear()
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
