@@ -25,10 +25,10 @@ class ParallelVecWrapper(pz.ParallelEnv):
         return self.envs[0].observation_space(agent)
 
     def step(self, actions: Dict[str, np.ndarray]) -> tuple[
-        dict,
-        dict[Any, List[float]],
-        dict[Any, List[bool]],
-        dict[Any, List[bool]],
+        Mapping[str, Any],
+        dict[str, List[float]],
+        dict[str, List[bool]],
+        dict[str, List[bool]],
         dict[str, dict[str, list]],
     ]:
         agent_obs_all_: Dict[str, List[Any]] = {agent: [] for agent in self.agents}
@@ -69,7 +69,7 @@ class ParallelVecWrapper(pz.ParallelEnv):
             agent_info_all,
         )
 
-    def reset(self, *args) -> tuple[dict[str, Any], dict[str, dict[str, list]]]:
+    def reset(self, *args) -> tuple[Mapping[str, Any], Mapping[str, dict]]:
         agent_obs_all_: Dict[str, List] = {agent: [] for agent in self.agents}
         agent_info_all_: Dict[str, List] = {agent: [] for agent in self.agents}
         for env in self.envs:

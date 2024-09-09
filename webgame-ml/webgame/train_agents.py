@@ -231,9 +231,9 @@ if __name__ == "__main__":
     )
 
     # Initialize policy and value networks
-    channels = 6
+    channels = 7
     if cfg.player_sees_visible_cells:
-        channels = 7
+        channels = 8
     grid_size = cfg.grid_size
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM

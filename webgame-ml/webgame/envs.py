@@ -92,11 +92,14 @@ class GameEnv(pettingzoo.ParallelEnv):
         Mapping[str, float],
         Mapping[str, bool],
         Mapping[str, bool],
-        Dict,
+        Mapping[str, dict],
     ]:
         all_actions = []
         for agent in ["player", "pursuer"]:
             all_actions.append(actions[agent])
+            
+        if self.player_is_paused():
+            all_actions[0] = 0
         self.game_state = self.game.step(all_actions[0], all_actions[1])
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
@@ -148,7 +151,7 @@ class GameEnv(pettingzoo.ParallelEnv):
 
     def reset(self, *args) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
-        dict,
+        Mapping[str, dict],
     ]:
         self.game_state = self.game.reset()
         while not self.check_path():
@@ -207,7 +210,7 @@ class GameEnv(pettingzoo.ParallelEnv):
             grid_channels = 3
         return gym.spaces.Tuple(
             (
-                gym.spaces.Box(0, 1, (7,)),
+                gym.spaces.Box(0, 1, (8,)),
                 gym.spaces.Box(0, 1, (grid_channels, self.grid_size, self.grid_size)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
@@ -220,7 +223,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         """
         Generates observations for an agent.
         """
-        obs_vec = np.zeros([4], dtype=float)
+        obs_vec = np.zeros([5], dtype=float)
         obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (
             game_state.level_size * CELL_SIZE
         )
@@ -229,6 +232,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         )
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
+        obs_vec[4] = 0 if self.stop_player_after is None else min(self.timer, self.stop_player_after) / self.stop_player_after
 
         walls = np.array(game_state.walls, dtype=float).reshape(
             (game_state.level_size, game_state.level_size)
@@ -318,8 +322,8 @@ class GameEnv(pettingzoo.ParallelEnv):
     
     def player_action_mask(self) -> np.ndarray:
         mask = np.zeros([9], dtype=int)
-        if self.player_is_paused():
-            mask[1:] = 1
+        # if self.player_is_paused():
+        #     mask[1:] = 1
         return mask
 
     def check_path(self) -> bool:

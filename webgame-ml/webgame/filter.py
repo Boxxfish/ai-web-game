@@ -344,9 +344,9 @@ if __name__ == "__main__":
         use_pos: bool,
         use_objs: bool,
     ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Dict], int]:
-        channels = 6
+        channels = 7
         if args.player_sees_visible_cells:
-            channels = 7
+            channels = 8
         p_net = PolicyNet(
             channels,
             args.grid_size,
@@ -435,7 +435,7 @@ if __name__ == "__main__":
             action = policies[agent](agent, env, obs[agent], info[agent])
             actions[agent] = action
         obs_, rew, done, trunc, info_ = env.step(actions)
-        if trunc["pursuer"]:
+        if done["pursuer"]:
             obs_, info_ = env.reset()
             b_filter = BayesFilter(
                 env.game_state.level_size,
