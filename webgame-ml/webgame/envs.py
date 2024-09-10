@@ -172,7 +172,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                 for agent in self.agents
             }
             if self.start_gt:
-                self.filters["pursuer"].belief = np.ones(
+                self.filters["pursuer"].belief = np.zeros(
                     self.filters["pursuer"].belief.shape
                 )
                 play_pos = self.game_state.player.pos

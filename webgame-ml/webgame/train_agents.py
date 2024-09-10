@@ -334,9 +334,7 @@ if __name__ == "__main__":
                             for agent in env.agents:
                                 logits = agents[agent].p_net(*eval_obs[agent]).squeeze()
                                 masked_logits = logits.masked_fill(eval_infos[agent]["action_mask"], -torch.inf)
-                                distr = Categorical(
-                                    logits=masked_logits
-                                )
+                                distr = Categorical(logits=masked_logits)
                                 all_distrs[agent] = distr
                                 action = distr.sample().item()
                                 all_actions[agent] = action
