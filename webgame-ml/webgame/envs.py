@@ -232,7 +232,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         )
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
-        obs_vec[4] = 0 if self.stop_player_after is None else min(self.timer, self.stop_player_after) / self.stop_player_after
+        obs_vec[4] = 0 if (self.stop_player_after is None or is_pursuer) else min(self.timer, self.stop_player_after) / self.stop_player_after
 
         walls = np.array(game_state.walls, dtype=float).reshape(
             (game_state.level_size, game_state.level_size)

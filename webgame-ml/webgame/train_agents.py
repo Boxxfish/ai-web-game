@@ -72,7 +72,7 @@ class Config:
     aux_rew_amount: float = 0.0
     grid_size: int = 8
     start_gt: bool = False
-    stop_player_after: Optional[int] = None
+    stop_player_after: Optional[int] = 99999
     device: str = "cuda"  # Device to use during training.
 
 
@@ -227,7 +227,7 @@ if __name__ == "__main__":
         player_sees_visible_cells=cfg.player_sees_visible_cells,
         update_fn=update_fn,
         start_gt=cfg.start_gt,
-        stop_player_after=cfg.stop_player_after,
+        stop_player_after=None,
     )
 
     # Initialize policy and value networks
