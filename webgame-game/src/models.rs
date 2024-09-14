@@ -348,7 +348,7 @@ unsafe impl Sync for PolicyNet {}
 
 impl LoadableNN for PolicyNet {
     fn load(vb: VarBuilder) -> candle_core::Result<Self> {
-        let channels = 7;
+        let channels = 8;
         let size = 16;
         let use_pos = true;
         let objs_shape = None;

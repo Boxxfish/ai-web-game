@@ -36,7 +36,7 @@ pub fn encode_obs(
 ) -> candle_core::Result<(Tensor, Tensor, Tensor)> {
     // Set up observations
     let device = Device::Cpu;
-    let mut obs_vec = vec![0.; 4];
+    let mut obs_vec = vec![0.; 5];
     obs_vec[0] = (0.5 * GRID_CELL_SIZE + agent_state.pos.x) / (level.size as f32 * GRID_CELL_SIZE);
     obs_vec[1] = (0.5 * GRID_CELL_SIZE + agent_state.pos.y) / (level.size as f32 * GRID_CELL_SIZE);
     obs_vec[2] = agent_state.dir.x;
@@ -95,7 +95,7 @@ pub fn encode_obs(
 
     // Combine scalar observations with grid
     let scalar_grid = Tensor::from_slice(&obs_vec, &[obs_vec.len()], &device)?
-        .reshape(&[4, 1, 1])?
+        .reshape(&[5, 1, 1])?
         .repeat(&[1, level.size, level.size])?;
     let grid = Tensor::cat(&[&scalar_grid, &grid], 0)?;
 
