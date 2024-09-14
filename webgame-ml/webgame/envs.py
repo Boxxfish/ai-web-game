@@ -243,10 +243,10 @@ class GameEnv(pettingzoo.ParallelEnv):
             if e in agent_state.vm_data:
                 obs_obj = game_state.objects[e]
                 obj_features = np.zeros([OBJ_DIM])
-                obj_features[0] = 0.5 + obs_obj.pos.x / (
+                obj_features[0] = (0.5 * CELL_SIZE + obs_obj.pos.x) / (
                     game_state.level_size * CELL_SIZE
                 )
-                obj_features[1] = 0.5 + obs_obj.pos.y / (
+                obj_features[1] = (0.5 * CELL_SIZE + obs_obj.pos.y) / (
                     game_state.level_size * CELL_SIZE
                 )
                 obj_features[2] = 1
@@ -258,10 +258,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         for i, e in enumerate(agent_state.listening):
             obj_noise = game_state.noise_sources[e]
             obj_features = np.zeros([OBJ_DIM])
-            obj_features[0] = 0.5 + obj_noise.pos.x / (
+            obj_features[0] = (0.5 * CELL_SIZE + obj_noise.pos.x) / (
                 game_state.level_size * CELL_SIZE
             )
-            obj_features[1] = 0.5 + obj_noise.pos.y / (
+            obj_features[1] = (0.5 * CELL_SIZE + obj_noise.pos.y) / (
                 game_state.level_size * CELL_SIZE
             )
             obj_features[3] = 1
