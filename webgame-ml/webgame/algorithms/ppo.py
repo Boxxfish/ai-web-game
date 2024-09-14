@@ -68,15 +68,17 @@ def train_ppo(
             advantages = advantages.to(device=device)
             action_masks = action_masks.to(device=device)
 
+            if use_masks:
+                action_probs = action_probs.masked_fill(action_masks, -torch.inf)
+
             # Train policy network
             with torch.no_grad():
                 old_act_probs = Categorical(logits=action_probs).log_prob(
                     actions.squeeze()
                 )
+            new_log_probs = p_net(*prev_states)
             if use_masks:
-                new_log_probs = p_net(*(prev_states + [action_masks]))
-            else:
-                new_log_probs = p_net(*prev_states)
+                new_log_probs = new_log_probs.masked_fill(action_masks, -torch.inf)
             new_act_distr = Categorical(logits=new_log_probs)
             new_act_probs = new_act_distr.log_prob(actions.squeeze())
             term1 = (new_act_probs - old_act_probs).exp() * advantages.squeeze()

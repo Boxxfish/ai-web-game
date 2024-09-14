@@ -69,6 +69,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         aux_rew_amount: float = 0.0,
         grid_size: int = 8,
         start_gt: bool = False,
+        stop_player_after: Optional[int] = None
     ):
         self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id)
         self.game_state: Optional[GameState] = None
@@ -84,17 +85,21 @@ class GameEnv(pettingzoo.ParallelEnv):
         self.aux_rew_amount = aux_rew_amount
         self.grid_size = grid_size
         self.start_gt = start_gt
+        self.stop_player_after = stop_player_after
 
     def step(self, actions: Mapping[str, int]) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
         Mapping[str, float],
         Mapping[str, bool],
         Mapping[str, bool],
-        Mapping[str, None],
+        Mapping[str, dict],
     ]:
         all_actions = []
         for agent in ["player", "pursuer"]:
             all_actions.append(actions[agent])
+            
+        if self.player_is_paused():
+            all_actions[0] = 0
         self.game_state = self.game.step(all_actions[0], all_actions[1])
         assert self.game_state
         obs = self.game_state_to_obs(self.game_state)
@@ -139,14 +144,14 @@ class GameEnv(pettingzoo.ParallelEnv):
             "pursuer": trunc,
         }
         infos = {
-            "player": None,
-            "pursuer": None,
+            "player": {"action_mask": self.player_action_mask()},
+            "pursuer": {"action_mask": np.zeros([9], dtype=int)},
         }
         return (obs, rewards, dones, truncs, infos)
 
     def reset(self, *args) -> tuple[
         Mapping[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
-        Mapping[str, None],
+        Mapping[str, dict],
     ]:
         self.game_state = self.game.reset()
         while not self.check_path():
@@ -177,8 +182,8 @@ class GameEnv(pettingzoo.ParallelEnv):
                 self.filters["pursuer"].belief[y, x] = 1
         obs = self.game_state_to_obs(self.game_state)
         infos = {
-            "player": None,
-            "pursuer": None,
+            "player": {"action_mask": self.player_action_mask()},
+            "pursuer": {"action_mask": np.zeros([9], dtype=int)},
         }
         return (obs, infos)
 
@@ -205,7 +210,7 @@ class GameEnv(pettingzoo.ParallelEnv):
             grid_channels = 3
         return gym.spaces.Tuple(
             (
-                gym.spaces.Box(0, 1, (7,)),
+                gym.spaces.Box(0, 1, (8,)),
                 gym.spaces.Box(0, 1, (grid_channels, self.grid_size, self.grid_size)),
                 gym.spaces.Box(0, 1, (MAX_OBJS, OBJ_DIM)),
                 gym.spaces.Box(0, 1, (MAX_OBJS,)),
@@ -218,7 +223,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         """
         Generates observations for an agent.
         """
-        obs_vec = np.zeros([4], dtype=float)
+        obs_vec = np.zeros([5], dtype=float)
         obs_vec[0] = (0.5 * CELL_SIZE + agent_state.pos.x) / (
             game_state.level_size * CELL_SIZE
         )
@@ -227,6 +232,7 @@ class GameEnv(pettingzoo.ParallelEnv):
         )
         obs_vec[2] = agent_state.dir.x
         obs_vec[3] = agent_state.dir.y
+        obs_vec[4] = 0 if (self.stop_player_after is None or is_pursuer) else min(self.timer, self.stop_player_after) / self.stop_player_after
 
         walls = np.array(game_state.walls, dtype=float).reshape(
             (game_state.level_size, game_state.level_size)
@@ -288,7 +294,7 @@ class GameEnv(pettingzoo.ParallelEnv):
                         (
                             obs_vec,
                             np.stack([walls, extra_channel]),
-                            obs_vec,
+                            obs_vecs,
                             attn_mask,
                         )
                     ),
@@ -310,6 +316,15 @@ class GameEnv(pettingzoo.ParallelEnv):
                 grid = np.stack([walls, extra_channel])
 
         return (obs_vec, grid, obs_vecs, attn_mask)
+
+    def player_is_paused(self) -> bool:
+        return self.stop_player_after is not None and self.timer >= self.stop_player_after
+    
+    def player_action_mask(self) -> np.ndarray:
+        mask = np.zeros([9], dtype=int)
+        if self.player_is_paused():
+            mask[1:] = 1
+        return mask
 
     def check_path(self) -> bool:
         assert self.game_state

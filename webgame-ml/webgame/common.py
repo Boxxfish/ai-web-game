@@ -104,3 +104,11 @@ def convert_obs(
         torch.from_numpy(o[1]).float(),
         torch.from_numpy(o[2]).float(),
     )
+
+def convert_infos(infos: Dict[str, Any]) -> dict:
+    if "action_mask" in infos:
+        if isinstance(infos["action_mask"], list):
+            infos["action_mask"] = torch.stack([torch.from_numpy(n) for n in infos["action_mask"]])
+        else:
+            infos["action_mask"] = torch.from_numpy(infos["action_mask"])
+    return infos

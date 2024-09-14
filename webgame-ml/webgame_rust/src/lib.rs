@@ -382,12 +382,6 @@ impl GameWrapper {
     }
 }
 
-impl Default for GameWrapper {
-    fn default() -> Self {
-        Self::new(false, 0.1, 8, false, None)
-    }
-}
-
 #[pymodule]
 fn webgame_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<GameWrapper>()?;
