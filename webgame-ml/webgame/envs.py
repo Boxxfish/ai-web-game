@@ -322,8 +322,8 @@ class GameEnv(pettingzoo.ParallelEnv):
     
     def player_action_mask(self) -> np.ndarray:
         mask = np.zeros([9], dtype=int)
-        # if self.player_is_paused():
-        #     mask[1:] = 1
+        if self.player_is_paused():
+            mask[1:] = 1
         return mask
 
     def check_path(self) -> bool:
