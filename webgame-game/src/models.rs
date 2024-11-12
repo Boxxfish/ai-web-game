@@ -364,7 +364,7 @@ impl LoadableNN for PolicyNet {
             objs_shape,
             vb.pp("backbone"),
         )?;
-        
+
         let net1_vb = vb.pp("net1");
         let net2_vb = vb.pp("net2");
         let net = nn::seq()

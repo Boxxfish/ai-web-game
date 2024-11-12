@@ -69,9 +69,10 @@ class GameEnv(pettingzoo.ParallelEnv):
         aux_rew_amount: float = 0.0,
         grid_size: int = 8,
         start_gt: bool = False,
-        stop_player_after: Optional[int] = None
+        stop_player_after: Optional[int] = None,
+        level_path: Optional[str] = None
     ):
-        self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id)
+        self.game = GameWrapper(use_objs, wall_prob, grid_size, visualize, recording_id, level_path)
         self.game_state: Optional[GameState] = None
         self.possible_agents = ["player", "pursuer"]
         self.agents = self.possible_agents[:]

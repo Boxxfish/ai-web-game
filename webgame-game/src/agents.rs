@@ -359,6 +359,7 @@ fn set_pursuer_action_neural(
                         .broadcast_div(&logits.exp().unwrap().sum_all().unwrap()))
                     .unwrap();
                     let probs = probs.to_vec1::<f32>().unwrap();
+                    println!("{:?}", probs);
                     pursuer.action_probs = probs.clone();
                     let index = rand::distributions::WeightedIndex::new(probs).unwrap();
                     let mut rng = rand::thread_rng();

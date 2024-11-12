@@ -6,7 +6,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 use webgame_game::{
     agents::{Agent, NextAction, PlayerAgent, PursuerAgent, UseGridPositions},
     configs::{LibCfgPlugin, VisualizerPlugin},
-    gridworld::{LevelLayout, ResetEvent, GRID_CELL_SIZE},
+    gridworld::{LevelLayout, LoadedLevelData, ResetEvent, GRID_CELL_SIZE},
     observations::fill_tri_half,
     observer::{Observable, Observer, RegenerateCones},
     screens::ScreenState,
@@ -134,6 +134,7 @@ pub struct GameWrapper {
     pub visualize: bool,
     pub recording_id: Option<String>,
     pub grid_size: usize,
+    pub loaded_level: Option<LevelLayout>,
 }
 
 #[pymethods]
@@ -145,15 +146,39 @@ impl GameWrapper {
         grid_size: usize,
         visualize: bool,
         recording_id: Option<String>,
+        level_path: Option<String>,
     ) -> Self {
         let mut app = App::new();
         app.add_plugins(LibCfgPlugin);
         app.insert_state(ScreenState::Game);
-        app.insert_resource(LevelLayout::random(
-            grid_size,
-            wall_prob,
-            if use_objs { grid_size } else { 0 },
-        ));
+        let mut loaded_level = None;
+        if let Some(level_path) = level_path {
+            let mut f = std::fs::File::open(level_path).expect("Could not open level file.");
+            let level: LoadedLevelData = serde_json::de::from_reader(f).unwrap();
+            let mut walls = Vec::new();
+            for y in 0..level.size {
+                for x in 0..level.size {
+                    walls.push(level.walls[(level.size - y - 1) * level.size + x] != 0);
+                }
+            }
+            let layout = LevelLayout {
+                walls,
+                size: level.size,
+                key_pos: Some(level.key_pos),
+                door_pos: Some(level.door_pos),
+                player_start: Some(level.player_start),
+                pursuer_start: Some(level.pursuer_start),
+                objects: level.objects,
+            };
+            app.insert_resource(layout.clone());
+            loaded_level = Some(layout);
+        } else {
+            app.insert_resource(LevelLayout::random(
+                grid_size,
+                wall_prob,
+                if use_objs { grid_size } else { 0 },
+            ));
+        }
         app.insert_resource(UseGridPositions);
 
         if visualize {
@@ -174,6 +199,7 @@ impl GameWrapper {
             use_objs,
             wall_prob,
             grid_size,
+            loaded_level,
         }
     }
 
@@ -187,12 +213,18 @@ impl GameWrapper {
     }
 
     pub fn reset(&mut self) -> GameState {
-        self.app.world.send_event(ResetEvent {
-            level: LevelLayout::random(
+        let level = if let Some(loaded_level) = &self.loaded_level {
+            loaded_level.clone()
+        }
+        else {
+            LevelLayout::random(
                 self.grid_size,
                 self.wall_prob,
                 if self.use_objs { self.grid_size } else { 0 },
-            ),
+            )
+        };
+        self.app.world.send_event(ResetEvent {
+            level,
         });
         self.app.update();
         self.app.update();

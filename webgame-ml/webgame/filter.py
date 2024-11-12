@@ -228,6 +228,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--pursuer-chkpt", type=str, default=None)
     parser.add_argument("--player-chkpt", type=str, default=None)
+    parser.add_argument("--level-path", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
     parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
@@ -384,6 +385,7 @@ if __name__ == "__main__":
         start_gt=args.start_gt,
         stop_player_after=args.stop_player_after,
         max_timer=100,
+        level_path=args.level_path,
     )
     obs_, info_ = env.reset()
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
