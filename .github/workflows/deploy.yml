@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  ITCH_USERNAME: boxfish
+  ITCH_USERNAME: intelligent-interactives
   ITCH_GAME_ID: ai-web-game
   BUILD_CHANNEL: html
   GAME_NAME: webgame-game
