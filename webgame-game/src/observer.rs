@@ -19,10 +19,16 @@ pub struct ObserverPlugin;
 
 impl Plugin for ObserverPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (update_observers.after(move_agents), update_vm_data),
-        );
+        app.add_systems(Update, (update_vm_data, add_vis_cones))
+            .add_systems(
+                PostUpdate,
+                (
+                    update_observers.after(bevy_rapier2d::plugin::PhysicsSet::Writeback),
+                    draw_observer_areas
+                        .after(update_observers)
+                        .after(add_vis_cones),
+                ),
+            );
     }
 }
 
@@ -30,17 +36,7 @@ impl Plugin for ObserverPlugin {
 pub struct ObserverPlayPlugin;
 
 impl Plugin for ObserverPlayPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (
-                add_vis_cones,
-                draw_observer_areas
-                    .after(update_observers)
-                    .after(add_vis_cones),
-            ),
-        );
-    }
+    fn build(&self, app: &mut App) {}
 }
 
 /// Stores visual marker data for an observer
@@ -118,26 +114,26 @@ fn update_observers(
         sorted_endpoints.extend_from_slice(&[start + cone_l, start + cone_r]);
 
         // Sort endpoints by angle and remove any points not within the vision cone
-        sorted_endpoints.retain_mut(|p| {
-            let dir = (*p - start).normalize();
-            dir.dot(agent.dir).acos() <= fov / 2. + 0.01
-        });
-        sorted_endpoints.sort_unstable_by_key(|p| {
-            let dir = (*p - start).normalize();
+        let mut sorted_dirs: Vec<_> = sorted_endpoints
+            .into_iter()
+            .map(|p| (p - start).normalize())
+            .filter(|dir| dir.dot(agent.dir).acos() <= fov / 2. + 0.01)
+            .collect();
+        sorted_dirs.sort_unstable_by_key(|dir| {
             OrderedFloat(dir.x * -dir.y.signum() - dir.y.signum())
         });
 
-        let first_idx = sorted_endpoints
+        let first_dir = cone_l.normalize();
+        let first_idx = sorted_dirs
             .iter()
-            .position(|p| p.abs_diff_eq(start + cone_l, 0.1))
-            .unwrap_or(0);
+            .position(|p| p.abs_diff_eq(first_dir, 0.01))
+            .unwrap();
 
         // Sweep from `cone_l` to `cone_r`
         let mut all_tris = Vec::new();
-        for i in 0..sorted_endpoints.len() {
-            let i = (i + first_idx) % sorted_endpoints.len();
-            let p = sorted_endpoints[i];
-            let dir = (p - start).normalize();
+        for i in 0..sorted_dirs.len() {
+            let i = (i + first_idx) % sorted_dirs.len();
+            let dir = sorted_dirs[i];
             let mut tri = Vec::new();
             for mat in [Mat2::from_angle(-0.001), Mat2::from_angle(0.001)] {
                 let dir = mat * dir;
@@ -281,13 +277,22 @@ fn add_vis_cones(
     }
 }
 
+/// Forces cones to be regenerated on each frame.
+#[derive(Resource)]
+pub struct RegenerateCones;
+
 /// Draws visible areas for observers.
 fn draw_observer_areas(
-    observer_query: Query<(&Observer, &Children, &GlobalTransform), With<DebugObserver>>,
-    mut vis_cone_query: Query<(&Handle<Mesh>, &mut Transform), With<VisCone>>,
+    observer_query: Query<(Entity, &Observer, &Children, &GlobalTransform), With<DebugObserver>>,
+    mut vis_cone_query: Query<
+        (&Handle<Mesh>, &mut Transform, &Handle<StandardMaterial>),
+        With<VisCone>,
+    >,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut commands: Commands,
+    regen_cones: Option<Res<RegenerateCones>>,
 ) {
-    for (observer, children, xform) in observer_query.iter() {
+    for (obs_e, observer, children, xform) in observer_query.iter() {
         let mut vertices = Vec::new();
         for tri in &observer.vis_mesh {
             vertices.push([tri[0].x, tri[0].y, 2.]);
@@ -295,12 +300,26 @@ fn draw_observer_areas(
             vertices.push([tri[2].x, tri[2].y, 2.]);
         }
         for child in children.iter() {
-            if let Ok((mesh, mut cone_xform)) = vis_cone_query.get_mut(*child) {
-                if let Some(mesh) = meshes.get_mut(mesh) {
+            if let Ok((mesh_handle, mut cone_xform, material)) = vis_cone_query.get_mut(*child) {
+                if let Some(mesh) = meshes.get_mut(mesh_handle) {
                     *cone_xform = Transform::from_matrix(xform.compute_matrix().inverse());
                     *mesh = mesh
                         .clone()
-                        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+                        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices.clone());
+                    if regen_cones.is_some() {
+                        commands.entity(*child).despawn_recursive();
+                        commands.entity(obs_e).with_children(|p| {
+                            p.spawn((
+                                PbrBundle {
+                                    mesh: mesh_handle.clone(),
+                                    material: material.clone(),
+                                    transform: *cone_xform,
+                                    ..default()
+                                },
+                                VisCone,
+                            ));
+                        });
+                    }
                 }
                 break;
             }

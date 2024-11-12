@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from safetensors.torch import load_model
 from webgame_rust import AgentState, GameState
 
-from webgame.common import convert_obs, explore_policy, pos_to_grid, process_obs
+from webgame.common import convert_infos, convert_obs, explore_policy, pos_to_grid, process_obs
 
 import gymnasium as gym
 from torch import Tensor, nn
@@ -71,6 +71,9 @@ class BayesFilter:
         )
         lkhd = lkhd * (1 - self.lkhd_min) + self.lkhd_min
         self.belief = lkhd * self.belief
+        if self.belief.sum() < 0.0001:
+            print("Warning: Belief summed to zero. Resetting filter.")
+            self.belief = np.ones(self.belief.shape)
         self.belief = self.belief / self.belief.sum()
         return self.belief
 
@@ -99,58 +102,54 @@ def manual_update(
     if other_e in agent_state.observing:
         player_vis_grid = pos_to_grid(other_obs.pos.x, other_obs.pos.y, size, cell_size)
 
-    obs_grid = np.array(game_state.walls).reshape(
-        [game_state.level_size, game_state.level_size]
-    )
-    lkhd = np.zeros([size, size])
+    obs_grid = np.array(game_state.walls).reshape([size, size])
+    grid_lkhd = 1 - obs_grid
+    if player_vis_grid is not None:
+        agent_lkhd = np.zeros([size, size])
+        agent_lkhd[player_vis_grid[1], player_vis_grid[0]] = 1
+    else:
+        visible_cells = np.array(agent_state.visible_cells).reshape([size, size])
+        # Cells within vision have 0% chance of agent being there
+        agent_lkhd = 1.0 - visible_cells
+        # All other cells are equally probable
+        agent_lkhd = agent_lkhd / (size**2 - visible_cells.sum())
+    lkhd = grid_lkhd * agent_lkhd
     agent_pos = agent_state.pos
     for y in range(size):
         for x in range(size):
-            grid_lkhd = 1 - obs_grid[y][x]
-            agent_lkhd = 1.0
             noise_lkhd = 1.0
             vis_lkhd = 1.0
-            if player_vis_grid is not None:
-                pass
-                if player_vis_grid != (x, y):
-                    agent_lkhd = 0.0
-            else:
-                # Cells within vision have 0% chance of agent being there
-                agent_lkhd = (
-                    1.0 - agent_state.visible_cells[y * game_state.level_size + x]
-                )
-                # All other cells are equally probable
-                agent_lkhd = agent_lkhd / (size**2 - sum(agent_state.visible_cells))
-
+            if player_vis_grid is None:
                 # If any noise sources are triggered, make the likelihood a normal distribution centered on it
-                pos = np.array([x, y], dtype=float) * CELL_SIZE
+                pos = np.array([x, y], dtype=float) * cell_size
                 for obj_id in agent_state.listening:
                     noise_obj = game_state.noise_sources[obj_id]
                     mean = np.array([noise_obj.pos.x, noise_obj.pos.y])
-                    var = ((mean - np.array([agent_pos.x, agent_pos.y])))**2
-                    val = np.exp(-((pos - mean) ** 2 / (2 * var))) / math.sqrt(
-                        2 * math.pi * var
-                    )
-                    noise_lkhd *= val.prod()
+                    var = ((mean - np.array([agent_pos.x, agent_pos.y])) ** 2).sum()
+                    dev = np.sqrt(var) / 4
+                    val = np.exp(-((((pos - mean) ** 2).sum() / (2 * dev**2))))
+                    noise_lkhd *= val
 
                 # If any visual markers are moved, we can localize the player based on its start position, end position,
                 # and how long it's been since the pursuer last looked at it
-                max_speed = CELL_SIZE
+                max_speed = cell_size
                 for obj_id in agent_state.observing:
                     if obj_id in agent_state.vm_data:
                         vm_data = agent_state.vm_data[obj_id]
                         obs_obj = game_state.objects[obj_id]
                         if vm_data.last_seen_elapsed > 1 and not vm_data.pushed_by_self:
-                            last_pos = np.array([vm_data.last_pos.x, vm_data.last_pos.y])
+                            last_pos = np.array(
+                                [vm_data.last_pos.x, vm_data.last_pos.y]
+                            )
                             curr_pos = np.array([obs_obj.pos.x, obs_obj.pos.y])
-                            moved_amount = ((last_pos - curr_pos)**2).sum()
+                            moved_amount = ((last_pos - curr_pos) ** 2).sum()
                             if moved_amount > 0.1:
-                                curr_dist = ((pos - curr_pos)**2).sum()
-                                max_dist = (max_speed * vm_data.last_seen_elapsed)**2
+                                curr_dist = ((pos - curr_pos) ** 2).sum()
+                                max_dist = (max_speed * vm_data.last_seen_elapsed) ** 2
                                 if curr_dist > max_dist:
                                     vis_lkhd = 0.0
 
-            lkhd[y][x] = grid_lkhd * agent_lkhd * noise_lkhd * vis_lkhd
+            lkhd[y][x] *= noise_lkhd * vis_lkhd
     return lkhd
 
 
@@ -202,7 +201,7 @@ def gt_update(
     is_pursuer: bool,
 ) -> np.ndarray:
     player_pos = game_state.player.pos
-    grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, CELL_SIZE)
+    grid_pos = pos_to_grid(player_pos.x, player_pos.y, game_state.level_size, cell_size)
     lkhd = np.zeros([size, size])
     lkhd[grid_pos[1], grid_pos[0]] = 1
     kernel = np.array([[0.1, 0.1, 0.1], [0.1, 1, 0.1], [0.1, 0.1, 0.1]])
@@ -229,6 +228,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--pursuer-chkpt", type=str, default=None)
     parser.add_argument("--player-chkpt", type=str, default=None)
+    parser.add_argument("--level-path", type=str, default=None)
     parser.add_argument("--use-pos", action="store_true")
     parser.add_argument("--use-objs", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
@@ -236,13 +236,16 @@ if __name__ == "__main__":
     parser.add_argument("--lkhd-min", type=float, default=0.0)
     parser.add_argument("--insert-visible-cells", default=False, action="store_true")
     parser.add_argument("--start-gt", default=False, action="store_true")
+    parser.add_argument("--use-pathfinding", default=False, action="store_true")
+    parser.add_argument("--stop-player-after", type=int, default=None)
     parser.add_argument(
         "--player-sees-visible-cells", default=False, action="store_true"
     )
+    parser.add_argument("--grid-size", type=int, default=8)
     args = parser.parse_args()
 
     def heuristic_policy(
-        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _: Dict,
     ) -> int:
         if random.random() < 0.1:
             action = env.action_space(agent).sample()
@@ -251,18 +254,103 @@ if __name__ == "__main__":
             action = explore_policy(env.game_state, agent == "pursuer")
         return action
 
+    def pathfinding_policy(
+        agent: str, env: GameEnv, obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _: Dict,
+    ) -> int:
+        if args.player_sees_visible_cells:
+            idx = -2
+        else:
+            idx = -1
+        probs = obs[0].squeeze(0)[idx]
+        max_idx = probs.flatten().argmax()
+        assert env.game_state
+        y = int(max_idx) // env.game_state.level_size
+        x = int(max_idx) % env.game_state.level_size
+        start_pos = (x, y)
+        pursuer_pos = env.game_state.pursuer.pos
+        target_pos = pos_to_grid(
+            pursuer_pos.x, pursuer_pos.y, env.game_state.level_size, CELL_SIZE
+        )
+
+        queue = [start_pos]
+        parents: Dict[tuple[int, int], tuple[int, int]] = {}
+        while len(queue) > 0:
+            curr_pos = queue.pop(0)
+            neighbors_delta = [
+                (1, 0),
+                (1, -1),
+                (1, 1),
+                (-1, 0),
+                (-1, -1),
+                (-1, 1),
+                (0, 1),
+                (-1, 1),
+                (1, 1),
+                (0, -1),
+                (-1, -1),
+                (1, -1),
+            ]
+            finished = False
+            for n_delta in neighbors_delta:
+                neighbor = (curr_pos[0] + n_delta[0], curr_pos[1] + n_delta[1])
+
+                def is_wall(pos: tuple[int, int]) -> bool:
+                    assert env.game_state
+                    if (
+                        pos[0] < 0
+                        or pos[0] >= env.game_state.level_size
+                        or pos[1] < 0
+                        or pos[1] >= env.game_state.level_size
+                    ):
+                        return True
+                    return env.game_state.walls[
+                        pos[1] * env.game_state.level_size + pos[0]
+                    ]
+
+                can_enter = not is_wall(neighbor)
+                if n_delta[0] != 0 and n_delta[1] != 0:
+                    n1 = (curr_pos[0] + n_delta[0], curr_pos[1])
+                    n2 = (curr_pos[0], curr_pos[1] + n_delta[1])
+                    can_enter = can_enter and (not is_wall(n1) or not is_wall(n2))
+                if can_enter and neighbor not in parents.keys():
+                    queue.append(neighbor)
+                    parents[neighbor] = curr_pos
+                    if neighbor == target_pos:
+                        finished = True
+                        break
+            if finished:
+                break
+
+        if target_pos not in parents.keys():
+            return env.action_space(agent).sample()
+
+        dirs = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
+        actual_dir = np.array(parents[target_pos]) - np.array(target_pos)
+        actual_dir = actual_dir / math.sqrt(float((actual_dir**2).sum()))
+        best_action = 0
+        best_score = -1
+        for i, dir_ in enumerate(dirs):
+            action = i + 1
+            norm_dir = np.array(dir_)
+            norm_dir = norm_dir / math.sqrt(float((norm_dir**2).sum()))
+            score = norm_dir @ actual_dir.T
+            if score > best_score:
+                best_score = score
+                best_action = action
+        return best_action
+
     def model_policy(
         chkpt_path: str,
         action_count: int,
         use_pos: bool,
         use_objs: bool,
-    ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], int]:
-        channels = 9
+    ) -> Callable[[str, GameEnv, Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Dict], int]:
+        channels = 7
         if args.player_sees_visible_cells:
-            channels = 10
+            channels = 8
         p_net = PolicyNet(
             channels,
-            8,
+            args.grid_size,
             action_count,
             use_pos,
             (MAX_OBJS, OBJ_DIM) if use_objs else None,
@@ -273,8 +361,10 @@ if __name__ == "__main__":
             agent: str,
             env: GameEnv,
             obs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+            info: Dict,
         ) -> int:
             action_probs = p_net(*obs).squeeze(0)
+            action_probs = action_probs.masked_fill(info["action_mask"], -torch.inf)
             action = Categorical(logits=action_probs).sample().item()
             return action
 
@@ -290,9 +380,16 @@ if __name__ == "__main__":
         visualize=True,
         recording_id=recording_id,
         player_sees_visible_cells=args.player_sees_visible_cells,
+        update_fn=manual_update,
+        grid_size=args.grid_size,
+        start_gt=args.start_gt,
+        stop_player_after=args.stop_player_after,
+        max_timer=100,
+        level_path=args.level_path,
     )
-    obs_ = env.reset()[0]
+    obs_, info_ = env.reset()
     obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
+    info = {agent: convert_infos(info_[agent]) for agent in env.agents}
 
     action_space = env.action_space("pursuer")  # Same for both agents
     assert isinstance(action_space, gym.spaces.Discrete)
@@ -329,33 +426,36 @@ if __name__ == "__main__":
             policies[agent] = model_policy(
                 chkpts[agent], int(action_space.n), args.use_pos, args.use_objs
             )
+        elif args.use_pathfinding and agent == "pursuer":
+            policies[agent] = pathfinding_policy
         else:
             policies[agent] = heuristic_policy
 
-    for _ in range(100):
+    for _ in range(500):
         actions = {}
         for agent in env.agents:
-            action = policies[agent](agent, env, obs[agent])
+            action = policies[agent](agent, env, obs[agent], info[agent])
             actions[agent] = action
-        obs_, rew, done, trunc, info = env.step(actions)
-        # if done["pursuer"]:
-        #     obs_ = env.reset()[0]
-        #     b_filter = BayesFilter(
-        #         env.game_state.level_size,
-        #         CELL_SIZE,
-        #         update_fn,
-        #         args.use_objs,
-        #         True,
-        #         args.lkhd_min,
-        #     )
-        #     if args.start_gt:
-        #         b_filter.belief = np.zeros(b_filter.belief.shape)
-        #         play_pos = env.game_state.player.pos
-        #         x, y = pos_to_grid(
-        #             play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
-        #         )
-        #         b_filter.belief[y, x] = 1
+        obs_, rew, done, trunc, info_ = env.step(actions)
+        if done["pursuer"]:
+            obs_, info_ = env.reset()
+            b_filter = BayesFilter(
+                env.game_state.level_size,
+                CELL_SIZE,
+                update_fn,
+                args.use_objs,
+                True,
+                args.lkhd_min,
+            )
+            if args.start_gt:
+                b_filter.belief = np.zeros(b_filter.belief.shape)
+                play_pos = env.game_state.player.pos
+                x, y = pos_to_grid(
+                    play_pos.x, play_pos.y, env.game_state.level_size, CELL_SIZE
+                )
+                b_filter.belief[y, x] = 1
         obs = {agent: convert_obs(obs_[agent], True) for agent in env.agents}
+        info = {agent: convert_infos(info_[agent]) for agent in env.agents}
 
         game_state = env.game_state
         assert game_state is not None
@@ -396,3 +496,5 @@ if __name__ == "__main__":
             timeless=False,
         )
         rr.log("filter/filter_obs", rr.Tensor(filter_obs[0]), timeless=False)
+        rr.log("agent/pursuer_obs", rr.Tensor(obs["pursuer"][0]), timeless=False)
+        rr.log("agent/player_obs", rr.Tensor(obs["player"][0]), timeless=False)

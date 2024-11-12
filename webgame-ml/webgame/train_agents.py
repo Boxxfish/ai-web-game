@@ -19,13 +19,15 @@ from safetensors.torch import save_model, load_model
 from webgame.algorithms.parallel_vec_wrapper import ParallelVecWrapper
 from webgame.algorithms.ppo import train_ppo
 from webgame.algorithms.rollout_buffer import RolloutBuffer
-from webgame.common import convert_obs, process_obs
+from webgame.common import convert_infos, convert_obs, explore_policy, process_obs
 from webgame.conf import entity
 from webgame.envs import MAX_OBJS, OBJ_DIM, GameEnv
 from webgame.filter import gt_update, manual_update, model_update
 from webgame.models import Backbone, MeasureModel, PolicyNet
 
 _: Any
+
+torch.tensor([1], device="cuda")
 
 
 @dataclass
@@ -44,7 +46,7 @@ class Config:
     lambda_: float = 0.95  # Lambda for GAE.
     epsilon: float = 0.2  # Epsilon for importance sample clipping.
     max_eval_steps: int = 500  # Max number of steps to take during each eval run.
-    eval_steps: int = 8  # Number of eval runs to average over.
+    eval_steps: int = 32  # Number of eval runs to average over.
     v_lr: float = 0.01  # Learning rate of the value net.
     p_lr: float = 0.001  # Learning rate of the policy net.
     use_objs: bool = False  # Whether we should use objects in the simulation.
@@ -55,6 +57,9 @@ class Config:
     wall_prob: float = 0.1  # Probability of a cell containing a wall.
     entropy_coeff: float = 0.001  # Entropy bonus applied.
     gradient_clip: float = 0.1  # Gradient clipping for networks.
+    gradient_steps: int = (
+        1  # Number of gradient steps, effectively increases the batch size.
+    )
     update_fn: str = (
         "gt"  # The filter's update function. Valid choices: manual, model, gt
     )
@@ -62,6 +67,12 @@ class Config:
     player_sees_visible_cells: bool = (
         False  # Whether the player should have ground truth information on the pursuer.
     )
+    checkpoint_player: str = ""  # Player checkpoint to continue from.
+    checkpoint_pursuer: str = ""  # Pursuer checkpoint to continue from.
+    aux_rew_amount: float = 0.0
+    grid_size: int = 8
+    start_gt: bool = False
+    stop_player_after: Optional[int] = 99999
     device: str = "cuda"  # Device to use during training.
 
 
@@ -74,20 +85,16 @@ class ValueNet(nn.Module):
         objs_shape: Optional[Tuple[int, int]] = None,
     ):
         super().__init__()
-        proj_dim = 32
+        proj_dim = 64
         self.backbone = Backbone(channels, proj_dim, size, use_pos, objs_shape)
-        self.net = nn.Sequential(
-            nn.Conv2d(proj_dim, 32, 3, padding="same", dtype=torch.float),
+        self.net1 = nn.Sequential(
+            nn.Conv2d(proj_dim, 64, 3, padding="same", dtype=torch.float),
             nn.SiLU(),
-            nn.Conv2d(32, 16, 3, padding="same", dtype=torch.float),
-            nn.SiLU(),
-            nn.Flatten(),
-            nn.Linear(size**2 * 16, 256),
-            nn.SiLU(),
-            nn.Linear(256, 256),
+        )
+        self.net2 = nn.Sequential(
+            nn.Linear(64, 256),
             nn.SiLU(),
             nn.Linear(256, 1),
-            nn.Tanh(),
         )
 
     def forward(
@@ -97,7 +104,9 @@ class ValueNet(nn.Module):
         objs_attn_mask: Optional[Tensor],  # Shape: (batch_size, max_obj_size)
     ) -> Tensor:
         features = self.backbone(grid, objs, objs_attn_mask)
-        values = self.net(features)
+        values = self.net1(features)
+        values = values.amax(-1).amax(-1)
+        values = self.net2(values)
         return values
 
 
@@ -112,10 +121,10 @@ class AgentData:
         act_count: int,
     ):
         self.v_net = ValueNet(
-            channels,
+            channels * 2,
             grid_size,
             cfg.use_pos,
-            (max_objs, obj_dim) if cfg.use_objs else None,
+            (max_objs * 2, obj_dim) if cfg.use_objs else None,
         )
         self.p_net = PolicyNet(
             channels,
@@ -199,8 +208,13 @@ if __name__ == "__main__":
             lambda: GameEnv(
                 cfg.use_objs,
                 cfg.wall_prob,
+                grid_size=cfg.grid_size,
                 max_timer=cfg.max_timer,
                 player_sees_visible_cells=cfg.player_sees_visible_cells,
+                aux_rew_amount=cfg.aux_rew_amount,
+                update_fn=update_fn,
+                start_gt=cfg.start_gt,
+                stop_player_after=cfg.stop_player_after,
             )
             for _ in range(cfg.num_envs)
         ]
@@ -208,15 +222,19 @@ if __name__ == "__main__":
     test_env = GameEnv(
         cfg.use_objs,
         cfg.wall_prob,
+        grid_size=cfg.grid_size,
         max_timer=cfg.max_timer,
         player_sees_visible_cells=cfg.player_sees_visible_cells,
+        update_fn=update_fn,
+        start_gt=cfg.start_gt,
+        stop_player_after=None,
     )
 
     # Initialize policy and value networks
-    channels = 9
+    channels = 7
     if cfg.player_sees_visible_cells:
-        channels = 10
-    grid_size = 8
+        channels = 8
+    grid_size = cfg.grid_size
     max_objs = MAX_OBJS
     obj_dim = OBJ_DIM
     act_space = env.action_space(env.agents[0])
@@ -225,11 +243,16 @@ if __name__ == "__main__":
         agent: AgentData(channels, grid_size, max_objs, obj_dim, cfg, int(act_space.n))
         for agent in env.agents
     }
+    if cfg.checkpoint_pursuer != "":
+        load_model(agents["pursuer"].p_net, cfg.checkpoint_pursuer)
+    if cfg.checkpoint_player != "":
+        load_model(agents["player"].p_net, cfg.checkpoint_player)
 
-    obs_: Mapping[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = (
-        env.reset()[0]
+    obs_, infos_ = (
+        env.reset()
     )
     obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
+    infos = {agent: convert_infos(infos_[agent]) for agent in env.agents}
     for step in tqdm(range(cfg.iterations), position=0):
         # Collect experience for a number of steps and store it in the buffer
         with torch.no_grad():
@@ -238,10 +261,11 @@ if __name__ == "__main__":
                 all_actions = {}
                 for agent in env.agents:
                     action_probs = agents[agent].p_net(*obs[agent])
-                    actions = Categorical(logits=action_probs).sample().numpy()
+                    masked_logits = action_probs.masked_fill(infos[agent]["action_mask"], -torch.inf)
+                    actions = Categorical(logits=masked_logits).sample().numpy()
                     all_action_probs[agent] = action_probs
                     all_actions[agent] = actions
-                obs_, rewards, dones, truncs, _ = env.step(all_actions)
+                obs_, rewards, dones, truncs, infos_ = env.step(all_actions)
                 for agent in env.agents:
                     agents[agent].buffer.insert_step(
                         list(obs[agent]),
@@ -250,20 +274,27 @@ if __name__ == "__main__":
                         rewards[agent],
                         dones[agent],
                         truncs[agent],
+                        infos[agent]["action_mask"],
                     )
                 obs = {agent: convert_obs(obs_[agent]) for agent in env.agents}
+                infos = {agent: convert_infos(infos_[agent]) for agent in env.agents}
             for agent in env.agents:
                 agents[agent].buffer.insert_final_step(list(obs[agent]))
 
         # Train
         log_dict = {}
         for agent in env.agents:
+            other_agent = {
+                "player": "pursuer",
+                "pursuer": "player",
+            }[agent]
             total_p_loss, total_v_loss = train_ppo(
                 agents[agent].p_net,
                 agents[agent].v_net,
                 agents[agent].p_opt,
                 agents[agent].v_opt,
                 agents[agent].buffer,
+                agents[other_agent].buffer,
                 device,
                 cfg.train_iters,
                 cfg.train_batch_size,
@@ -272,6 +303,8 @@ if __name__ == "__main__":
                 cfg.epsilon,
                 entropy_coeff=cfg.entropy_coeff,
                 gradient_clip=cfg.gradient_clip,
+                gradient_steps=cfg.gradient_steps,
+                use_masks=True,
             )
             agents[agent].buffer.clear()
             log_dict[f"{agent}_avg_v_loss"] = total_v_loss / cfg.train_iters
@@ -280,49 +313,68 @@ if __name__ == "__main__":
         # Evaluate agents
         if step % cfg.eval_every == 0:
             with torch.no_grad():
-                # Visualize
-                reward_total = {agent: 0.0 for agent in env.agents}
-                entropy_total = {agent: 0.0 for agent in env.agents}
-                for _ in range(cfg.eval_steps):
-                    avg_entropy = {agent: 0.0 for agent in env.agents}
-                    steps_taken = 0
-                    obs_ = test_env.reset()[0]
-                    eval_obs = {
-                        agent: convert_obs(obs_[agent], True) for agent in env.agents
-                    }
-                    for _ in range(cfg.max_eval_steps):
-                        all_actions = {}
-                        all_distrs = {}
-                        for agent in env.agents:
-                            distr = Categorical(
-                                logits=agents[agent].p_net(*eval_obs[agent]).squeeze()
-                            )
-                            all_distrs[agent] = distr
-                            action = distr.sample().item()
-                            all_actions[agent] = action
-                        obs_, reward, eval_done, _, _ = test_env.step(all_actions)
+                for use_explore in [False, True]:
+                    reward_total = {agent: 0.0 for agent in env.agents}
+                    entropy_total = {agent: 0.0 for agent in env.agents}
+                    for _ in range(cfg.eval_steps):
+                        avg_entropy = {agent: 0.0 for agent in env.agents}
+                        steps_taken = 0
+                        obs_, info_ = test_env.reset()
                         eval_obs = {
                             agent: convert_obs(obs_[agent], True)
                             for agent in env.agents
                         }
-                        steps_taken += 1
-                        for agent in env.agents:
-                            reward_total[agent] += reward[agent]
-                            avg_entropy[agent] += all_distrs[agent].entropy()
-                        if eval_done:
-                            break
-                    for agent in env.agents:
-                        avg_entropy[agent] /= steps_taken
-                        entropy_total[agent] += avg_entropy[agent]
-                for agent in env.agents:
-                    log_dict.update(
-                        {
-                            f"{agent}_avg_eval_episode_return": reward_total[agent]
-                            / cfg.eval_steps,
-                            f"{agent}_avg_eval_entropy": entropy_total[agent]
-                            / cfg.eval_steps,
+                        eval_infos = {
+                            agent: convert_infos(info_[agent])
+                            for agent in env.agents
                         }
-                    )
+                        for _ in range(cfg.max_eval_steps):
+                            all_actions = {}
+                            all_distrs = {}
+                            for agent in env.agents:
+                                logits = agents[agent].p_net(*eval_obs[agent]).squeeze()
+                                masked_logits = logits.masked_fill(eval_infos[agent]["action_mask"], -torch.inf)
+                                distr = Categorical(logits=masked_logits)
+                                all_distrs[agent] = distr
+                                action = distr.sample().item()
+                                all_actions[agent] = action
+                            if use_explore:
+                                assert test_env.game_state
+                                all_actions["player"] = explore_policy(
+                                    test_env.game_state, False
+                                )
+                            obs_, reward, eval_done, _, info_ = test_env.step(all_actions)
+                            eval_obs = {
+                                agent: convert_obs(obs_[agent], True)
+                                for agent in env.agents
+                            }
+                            eval_infos = {
+                                agent: convert_infos(info_[agent])
+                                for agent in env.agents
+                            }
+                            steps_taken += 1
+                            for agent in env.agents:
+                                reward_total[agent] += reward[agent]
+                                avg_entropy[agent] += all_distrs[agent].entropy()
+                            if eval_done:
+                                break
+                        for agent in env.agents:
+                            avg_entropy[agent] /= steps_taken
+                            entropy_total[agent] += avg_entropy[agent]
+                    prefix = "baseline_" if use_explore else ""
+                    for agent in env.agents:
+                        log_dict.update(
+                            {
+                                f"{prefix}{agent}_avg_eval_episode_return": reward_total[
+                                    agent
+                                ]
+                                / cfg.eval_steps,
+                                f"{prefix}{agent}_avg_eval_entropy": entropy_total[
+                                    agent
+                                ]
+                                / cfg.eval_steps,
+                            }
+                        )
 
         wandb.log(log_dict)
 

@@ -1,9 +1,10 @@
 # Pursuer
 
-This repo contains both the game and training code for the AI demo "Pursuer". The design document can be found in the `/docs` folder.
+**Note: This repository is in semi-archived mode. Feel free to fork and make any changes, but aside from major issues no changes will be made to this repository. Thanks!**
 
-The goal of this project is to design and build a (short) game incorporating deep learning, with the constraint that it
-has to be efficient enough to run in a browser.
+[![Video](https://img.youtube.com/vi/54bOSzWGBEw/maxresdefault.jpg)](https://youtu.be/54bOSzWGBEw)
+
+This repo contains both the game and training code for the AI demo "Pursuer". The design document can be found in the `/docs` folder.
 
 ## Running the Game
 
@@ -55,10 +56,10 @@ entity = "YOUR_WANDB_NAME"
 Now, run an experiment:
 
 ```bash
-mkdir temp
-python webgame/experiments/test_rust.py
+mkdir runs
+python webgame/train_agents.py
 ```
 
 If you open your WandB dashboard, you should see a bunch of metrics pop up now. You should also see a file called
-`p_net.safetensors` in your `temp` directory. This file contains the weights of our neural network. To update the game's
-current checkpoint, move this file to the `assets` folder under `webgame-game`.
+`p_net-ITERATION.safetensors` in your `runs` directory. This file contains the weights of our neural network. To update the game's
+current checkpoint, rename this file to `p_net.safetensors` and move this file to the `assets` folder under `webgame-game`.
